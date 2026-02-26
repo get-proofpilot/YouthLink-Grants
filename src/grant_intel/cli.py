@@ -16,6 +16,7 @@ from grant_intel.db import (
     get_unscored_foundations,
     get_unscored_opportunities,
     init_db,
+    insert_draft,
     insert_foundation_grant,
     insert_score,
     upsert_foundation,
@@ -269,6 +270,184 @@ def run(ctx):
 
 
 @cli.command()
+@click.argument("opportunity_id", type=int)
+@click.option("--nofa-file", type=click.Path(exists=True), help="Path to file containing NOFA/RFP text")
+@click.option("--nofa-url", help="URL to fetch NOFA/RFP from")
+@click.option("--output-dir", default="output/drafts", help="Output directory for drafts")
+@click.pass_context
+def draft(ctx, opportunity_id, nofa_file, nofa_url, output_dir):
+    """Generate a federal grant narrative draft for an opportunity."""
+    from grant_intel.writer.agent import build_draft_record, draft_federal_narrative
+    from grant_intel.writer.extractor import (
+        extract_requirements_from_text,
+        extract_requirements_from_url,
+    )
+
+    config = ctx.obj["config"]
+    conn = get_connection(ctx.obj["db_path"])
+
+    if not config.anthropic_api_key:
+        click.echo("Error: ANTHROPIC_API_KEY not set. Add it to .env file.", err=True)
+        sys.exit(1)
+
+    # Look up the opportunity
+    row = conn.execute("SELECT * FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+    if not row:
+        click.echo(f"Error: Opportunity #{opportunity_id} not found in database.", err=True)
+        conn.close()
+        sys.exit(1)
+
+    opp = dict(row)
+    click.echo(f"Opportunity: {opp['title']}")
+    click.echo(f"Agency: {opp.get('agency', 'N/A')}")
+
+    # Extract requirements
+    if nofa_file:
+        with open(nofa_file) as f:
+            nofa_text = f.read()
+        click.echo("Extracting requirements from file...")
+        requirements = extract_requirements_from_text(nofa_text, config.anthropic_api_key)
+    elif nofa_url:
+        click.echo(f"Fetching and extracting requirements from URL...")
+        requirements = extract_requirements_from_url(nofa_url, config.anthropic_api_key)
+    else:
+        # Use what we have from the opportunity record
+        click.echo("No NOFA provided — using opportunity description for context.")
+        requirements = {
+            "funder_name": opp.get("agency", ""),
+            "program_name": opp.get("title", ""),
+            "deadline": opp.get("deadline", ""),
+            "award_range": {
+                "min": opp.get("award_floor", 0) or 0,
+                "max": opp.get("award_ceiling", 0) or 0,
+            },
+            "eligible_applicants": opp.get("eligibility", ""),
+            "required_sections": [],
+            "page_limits": {},
+            "evaluation_criteria": [],
+            "focus_areas": [],
+            "restrictions": [],
+            "questions_to_answer": [],
+            "raw_text": opp.get("description", ""),
+        }
+
+    click.echo(f"Funder: {requirements.get('funder_name', 'Unknown')}")
+    click.echo(f"Writing narrative draft ({len(requirements.get('required_sections', []) or [])} required sections)...")
+
+    filepath, sections = draft_federal_narrative(
+        api_key=config.anthropic_api_key,
+        org=config.org,
+        requirements=requirements,
+        output_dir=output_dir,
+    )
+
+    # Store in database
+    record = build_draft_record(
+        opportunity_id=opportunity_id,
+        foundation_id=None,
+        draft_type="federal_narrative",
+        funder_name=requirements.get("funder_name", ""),
+        project_name=requirements.get("program_name", ""),
+        requirements=requirements,
+        sections=sections,
+        full_draft_path=filepath,
+    )
+    draft_id = insert_draft(conn, record)
+    conn.close()
+
+    click.echo(f"\nDraft saved to: {filepath}")
+    click.echo(f"Draft ID: {draft_id}")
+    click.echo(f"Sections written: {', '.join(sections.keys())}")
+    click.echo("\nReview items marked with [BRACKETS] and fill in org-specific data.")
+
+
+@cli.command()
+@click.argument("foundation_id", type=int)
+@click.option("--guidelines-file", type=click.Path(exists=True), help="Path to funder guidelines text")
+@click.option("--guidelines-url", help="URL to fetch funder guidelines from")
+@click.option("--amount", type=int, required=True, help="Dollar amount to request")
+@click.option("--project", required=True, help="Project name")
+@click.option("--output-dir", default="output/drafts", help="Output directory for drafts")
+@click.pass_context
+def loi(ctx, foundation_id, guidelines_file, guidelines_url, amount, project, output_dir):
+    """Generate a foundation Letter of Inquiry."""
+    from grant_intel.writer.agent import build_draft_record, draft_foundation_loi
+    from grant_intel.writer.extractor import (
+        extract_requirements_from_text,
+        extract_requirements_from_url,
+    )
+
+    config = ctx.obj["config"]
+    conn = get_connection(ctx.obj["db_path"])
+
+    if not config.anthropic_api_key:
+        click.echo("Error: ANTHROPIC_API_KEY not set. Add it to .env file.", err=True)
+        sys.exit(1)
+
+    # Look up the foundation
+    row = conn.execute("SELECT * FROM foundations WHERE id = ?", (foundation_id,)).fetchone()
+    if not row:
+        click.echo(f"Error: Foundation #{foundation_id} not found in database.", err=True)
+        conn.close()
+        sys.exit(1)
+
+    foundation = dict(row)
+    funder_name = foundation["name"]
+    click.echo(f"Foundation: {funder_name}")
+    click.echo(f"Request amount: ${amount:,}")
+    click.echo(f"Project: {project}")
+
+    # Extract guidelines if provided
+    if guidelines_file:
+        with open(guidelines_file) as f:
+            guidelines_text = f.read()
+        click.echo("Extracting funder guidelines...")
+        requirements = extract_requirements_from_text(guidelines_text, config.anthropic_api_key)
+    elif guidelines_url:
+        click.echo("Fetching funder guidelines from URL...")
+        requirements = extract_requirements_from_url(guidelines_url, config.anthropic_api_key)
+    else:
+        requirements = {
+            "funder_name": funder_name,
+            "program_name": project,
+            "focus_areas": [],
+            "restrictions": [],
+            "eligible_applicants": "",
+            "raw_text": "",
+        }
+
+    click.echo("Writing Letter of Inquiry...")
+
+    filepath, loi_text = draft_foundation_loi(
+        api_key=config.anthropic_api_key,
+        org=config.org,
+        requirements=requirements,
+        funder_name=funder_name,
+        amount=amount,
+        project_name=project,
+        output_dir=output_dir,
+    )
+
+    # Store in database
+    record = build_draft_record(
+        opportunity_id=None,
+        foundation_id=foundation_id,
+        draft_type="foundation_loi",
+        funder_name=funder_name,
+        project_name=project,
+        requirements=requirements,
+        sections={"Letter of Inquiry": loi_text},
+        full_draft_path=filepath,
+    )
+    draft_id = insert_draft(conn, record)
+    conn.close()
+
+    click.echo(f"\nLOI saved to: {filepath}")
+    click.echo(f"Draft ID: {draft_id}")
+    click.echo("\nReview items marked with [BRACKETS] and fill in org-specific data.")
+
+
+@cli.command()
 @click.pass_context
 def status(ctx):
     """Show pipeline statistics."""
@@ -278,6 +457,7 @@ def status(ctx):
     click.echo("Pipeline Status:")
     click.echo(f"  Opportunities: {stats['total_opportunities']} total, {stats['scored_opportunities']} scored")
     click.echo(f"  Foundations:   {stats['total_foundations']} total, {stats['scored_foundations']} scored")
+    click.echo(f"  Drafts:       {stats['total_drafts']} total")
 
     conn.close()
 

@@ -1,0 +1,20 @@
+# {{ draft_type_label }}
+
+**Funder:** {{ funder_name }}
+**Project:** {{ project_name }}
+**Draft generated:** {{ date }}
+
+---
+
+{% for section_name, content in sections.items() %}
+## {{ section_name }}
+
+{{ content }}
+
+{% endfor %}
+
+---
+
+> **Review checklist:** Items marked with [BRACKETS] need org-specific data,
+> stories, or verification before submission. Review each section against
+> the funder's published requirements.

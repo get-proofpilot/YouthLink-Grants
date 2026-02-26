@@ -96,6 +96,22 @@ CREATE TABLE IF NOT EXISTS pipeline (
     notes TEXT,
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS grant_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id INTEGER REFERENCES opportunities(id),
+    foundation_id INTEGER REFERENCES foundations(id),
+    draft_type TEXT NOT NULL,
+    funder_name TEXT,
+    project_name TEXT,
+    requirements_json TEXT,
+    sections_json TEXT,
+    full_draft TEXT,
+    model_used TEXT,
+    status TEXT DEFAULT 'draft',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 
@@ -356,9 +372,75 @@ def get_pipeline_stats(conn: sqlite3.Connection) -> dict:
     scored_foundations = conn.execute(
         "SELECT COUNT(DISTINCT foundation_id) FROM scores WHERE foundation_id IS NOT NULL"
     ).fetchone()[0]
+    draft_count = conn.execute("SELECT COUNT(*) FROM grant_drafts").fetchone()[0]
     return {
         "total_opportunities": opp_count,
         "total_foundations": foundation_count,
         "scored_opportunities": scored_opps,
         "scored_foundations": scored_foundations,
+        "total_drafts": draft_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Grant drafts CRUD
+# ---------------------------------------------------------------------------
+
+
+def insert_draft(conn: sqlite3.Connection, draft: dict) -> int:
+    """Insert a grant draft record. Returns the new draft ID."""
+    cursor = conn.execute(
+        """INSERT INTO grant_drafts
+        (opportunity_id, foundation_id, draft_type, funder_name, project_name,
+         requirements_json, sections_json, full_draft, model_used, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            draft.get("opportunity_id"),
+            draft.get("foundation_id"),
+            draft.get("draft_type", ""),
+            draft.get("funder_name", ""),
+            draft.get("project_name", ""),
+            draft.get("requirements_json", "{}"),
+            draft.get("sections_json", "{}"),
+            draft.get("full_draft", ""),
+            draft.get("model_used", ""),
+            draft.get("status", "draft"),
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_draft(conn: sqlite3.Connection, draft_id: int) -> dict | None:
+    """Get a single draft by ID."""
+    row = conn.execute(
+        "SELECT * FROM grant_drafts WHERE id = ?", (draft_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_drafts_by_opportunity(conn: sqlite3.Connection, opp_id: int) -> list[dict]:
+    """Get all drafts for a given opportunity."""
+    rows = conn.execute(
+        "SELECT * FROM grant_drafts WHERE opportunity_id = ? ORDER BY created_at DESC",
+        (opp_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_drafts_by_foundation(conn: sqlite3.Connection, foundation_id: int) -> list[dict]:
+    """Get all drafts for a given foundation."""
+    rows = conn.execute(
+        "SELECT * FROM grant_drafts WHERE foundation_id = ? ORDER BY created_at DESC",
+        (foundation_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_draft_status(conn: sqlite3.Connection, draft_id: int, status: str):
+    """Update the status of a draft (e.g., 'draft', 'review', 'submitted')."""
+    conn.execute(
+        "UPDATE grant_drafts SET status = ?, updated_at = datetime('now') WHERE id = ?",
+        (status, draft_id),
+    )
+    conn.commit()

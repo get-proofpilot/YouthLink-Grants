@@ -1,0 +1,62 @@
+# Organizations similar to YLM for 990 research.
+# Their filings reveal which foundations fund pastoral development work.
+similar_organizations:
+  - name: "National Network of Youth Ministries"
+    ein: "953537789"
+    focus: "Youth pastor networking (near-identical mission)"
+
+  - name: "Young Life"
+    ein: "840385934"
+    focus: "Youth ministry with leader training arm"
+
+  - name: "Youth for Christ USA"
+    ein: "360734150"
+    focus: "Youth evangelism and leader equipping"
+
+  - name: "Fellowship of Christian Athletes"
+    ein: "440610626"
+    focus: "Faith-based youth development"
+
+  - name: "Dare 2 Share Ministries"
+    ein: "841410348"
+    focus: "Youth leader training for evangelism"
+
+  - name: "LeaderTreks"
+    ein: "364326498"
+    focus: "Youth leadership development"
+
+  - name: "Center for Youth Ministry Training"
+    ein: "201939885"
+    focus: "Direct pastoral development and education"
+
+  - name: "Fuller Youth Institute"
+    ein: "951644054"
+    focus: "Research and training for youth ministry"
+
+  - name: "Youth Specialties"
+    ein: "330491473"
+    focus: "Youth ministry resources and training"
+
+  - name: "Group Publishing"
+    ein: "840748636"
+    focus: "Youth ministry resources and curriculum"
+
+  - name: "Student Life"
+    ein: "640493045"
+    focus: "Student ministry events and leader training"
+
+  - name: "Cru (Campus Crusade for Christ)"
+    ein: "952595186"
+    focus: "Campus ministry with staff development"
+
+  - name: "InterVarsity Christian Fellowship"
+    ein: "362171714"
+    focus: "Campus ministry and leader development"
+
+  - name: "The Navigators"
+    ein: "846004167"
+    focus: "Discipleship and leadership training"
+
+  - name: "Arizona Baptist Convention"
+    ein: "866006239"
+    focus: "Arizona church and pastor networking"

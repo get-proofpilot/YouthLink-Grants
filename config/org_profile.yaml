@@ -1,0 +1,49 @@
+organization:
+  name: "Youth Link Ministries"
+  ein: ""  # To be provided by YLM
+  tax_status: "501(c)(3)"
+  location:
+    city: "Chandler"
+    state: "AZ"
+    zip: "85224"
+  mission: >-
+    Connect, coach, and resource youth pastors and ministry leaders
+    for Christ-centered impact on the next generation.
+  serves: "Youth pastors and ministry leaders (NOT youth directly)"
+  programs:
+    - name: "Local Youth Leader Networks"
+      description: "PHX, East Valley, Release Time networking groups for youth ministry leaders"
+    - name: "Coaching"
+      description: "One-on-one and group coaching relationships for youth pastors"
+    - name: "Resources & Speaking"
+      description: "Shared ministry resources, curriculum, and speaking engagements"
+  budget_range: "under_250k"
+  years_active: 19
+  ntee_codes:
+    - "X20"   # Christian organizations
+    - "X80"   # Religious media/communications
+    - "B80"   # Student services
+    - "S"     # Community improvement
+    - "T"     # Philanthropy/voluntarism
+
+search_keywords:
+  tier1:
+    - "pastoral development"
+    - "ministry leadership training"
+    - "clergy coaching"
+    - "clergy training"
+    - "religious leadership development"
+    - "church leader networking"
+    - "faith-based capacity building"
+    - "peer learning networks clergy"
+    - "nonprofit leadership coaching"
+  tier2:
+    - "youth ministry support"
+    - "faith-based youth development"
+    - "Christian education support"
+    - "mentoring program development"
+  tier3:
+    - "small nonprofit capacity building"
+    - "Arizona community development"
+    - "nonprofit professional development"
+    - "faith-based organization grants"

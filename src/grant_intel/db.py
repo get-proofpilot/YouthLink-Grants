@@ -97,6 +97,16 @@ CREATE TABLE IF NOT EXISTS pipeline (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS pipeline_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id INTEGER UNIQUE REFERENCES opportunities(id),
+    foundation_id INTEGER UNIQUE REFERENCES foundations(id),
+    stage TEXT NOT NULL DEFAULT 'discovered',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS grant_drafts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     opportunity_id INTEGER REFERENCES opportunities(id),
@@ -444,3 +454,235 @@ def update_draft_status(conn: sqlite3.Connection, draft_id: int, status: str):
         (status, draft_id),
     )
     conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Dashboard queries
+# ---------------------------------------------------------------------------
+
+
+def get_opportunity_by_id(conn: sqlite3.Connection, opp_id: int) -> dict | None:
+    """Get a single opportunity with its score."""
+    row = conn.execute(
+        """SELECT o.*, s.score, s.explanation, s.urgency
+        FROM opportunities o
+        LEFT JOIN scores s ON s.opportunity_id = o.id
+        WHERE o.id = ?""",
+        (opp_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_foundation_by_id(conn: sqlite3.Connection, foundation_id: int) -> dict | None:
+    """Get a single foundation with its score."""
+    row = conn.execute(
+        """SELECT f.*, s.score, s.explanation
+        FROM foundations f
+        LEFT JOIN scores s ON s.foundation_id = f.id
+        WHERE f.id = ?""",
+        (foundation_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_foundation_grants_list(conn: sqlite3.Connection, foundation_id: int) -> list[dict]:
+    """Get all grants made by a specific foundation."""
+    rows = conn.execute(
+        """SELECT fg.* FROM foundation_grants fg
+        WHERE fg.foundation_id = ?
+        ORDER BY fg.amount DESC""",
+        (foundation_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_all_drafts(conn: sqlite3.Connection) -> list[dict]:
+    """Get all drafts with linked opportunity/foundation names."""
+    rows = conn.execute(
+        """SELECT gd.*,
+            o.title as opportunity_title,
+            f.name as foundation_name
+        FROM grant_drafts gd
+        LEFT JOIN opportunities o ON gd.opportunity_id = o.id
+        LEFT JOIN foundations f ON gd.foundation_id = f.id
+        ORDER BY gd.created_at DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_score_distribution(conn: sqlite3.Connection) -> dict:
+    """Get count of scores by range."""
+    row = conn.execute(
+        """SELECT
+            COALESCE(SUM(CASE WHEN score >= 7 THEN 1 ELSE 0 END), 0) as high,
+            COALESCE(SUM(CASE WHEN score >= 4 AND score < 7 THEN 1 ELSE 0 END), 0) as medium,
+            COALESCE(SUM(CASE WHEN score < 4 THEN 1 ELSE 0 END), 0) as low
+        FROM scores"""
+    ).fetchone()
+    return {"high": row[0], "medium": row[1], "low": row[2]}
+
+
+def get_upcoming_deadlines(conn: sqlite3.Connection, days: int = 90) -> list[dict]:
+    """Get opportunities with deadlines within N days."""
+    rows = conn.execute(
+        """SELECT o.*, s.score, s.urgency
+        FROM opportunities o
+        LEFT JOIN scores s ON s.opportunity_id = o.id
+        WHERE o.deadline != '' AND o.deadline IS NOT NULL
+        AND date(o.deadline) BETWEEN date('now') AND date('now', '+' || ? || ' days')
+        ORDER BY o.deadline ASC""",
+        (days,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Pipeline entries CRUD
+# ---------------------------------------------------------------------------
+
+
+def upsert_pipeline_entry(
+    conn: sqlite3.Connection,
+    opportunity_id: int | None = None,
+    foundation_id: int | None = None,
+    stage: str = "discovered",
+    notes: str = "",
+) -> int:
+    """Insert or update a pipeline entry. Returns entry ID."""
+    if opportunity_id:
+        existing = conn.execute(
+            "SELECT id FROM pipeline_entries WHERE opportunity_id = ?",
+            (opportunity_id,),
+        ).fetchone()
+    elif foundation_id:
+        existing = conn.execute(
+            "SELECT id FROM pipeline_entries WHERE foundation_id = ?",
+            (foundation_id,),
+        ).fetchone()
+    else:
+        raise ValueError("Must provide opportunity_id or foundation_id")
+
+    if existing:
+        entry_id = existing[0]
+        conn.execute(
+            "UPDATE pipeline_entries SET stage = ?, notes = ?, updated_at = datetime('now') WHERE id = ?",
+            (stage, notes, entry_id),
+        )
+        conn.commit()
+        return entry_id
+
+    cursor = conn.execute(
+        """INSERT INTO pipeline_entries (opportunity_id, foundation_id, stage, notes)
+        VALUES (?, ?, ?, ?)""",
+        (opportunity_id, foundation_id, stage, notes),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def update_pipeline_stage(conn: sqlite3.Connection, entry_id: int, stage: str, notes: str = ""):
+    """Update a pipeline entry's stage."""
+    if notes:
+        conn.execute(
+            "UPDATE pipeline_entries SET stage = ?, notes = ?, updated_at = datetime('now') WHERE id = ?",
+            (stage, notes, entry_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE pipeline_entries SET stage = ?, updated_at = datetime('now') WHERE id = ?",
+            (stage, entry_id),
+        )
+    conn.commit()
+
+
+def update_pipeline_notes(conn: sqlite3.Connection, entry_id: int, notes: str):
+    """Update pipeline entry notes."""
+    conn.execute(
+        "UPDATE pipeline_entries SET notes = ?, updated_at = datetime('now') WHERE id = ?",
+        (notes, entry_id),
+    )
+    conn.commit()
+
+
+def get_all_pipeline_entries(conn: sqlite3.Connection) -> list[dict]:
+    """Get all pipeline entries with linked data."""
+    rows = conn.execute(
+        """SELECT pe.*,
+            o.title as opportunity_title, o.agency, o.deadline,
+            f.name as foundation_name,
+            s.score
+        FROM pipeline_entries pe
+        LEFT JOIN opportunities o ON pe.opportunity_id = o.id
+        LEFT JOIN foundations f ON pe.foundation_id = f.id
+        LEFT JOIN scores s ON (
+            (s.opportunity_id = pe.opportunity_id AND pe.opportunity_id IS NOT NULL)
+            OR (s.foundation_id = pe.foundation_id AND pe.foundation_id IS NOT NULL)
+        )
+        ORDER BY pe.updated_at DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_pipeline_by_stage(conn: sqlite3.Connection) -> dict[str, list[dict]]:
+    """Group pipeline entries by stage for dashboard view."""
+    entries = get_all_pipeline_entries(conn)
+    grouped: dict[str, list[dict]] = {
+        "discovered": [], "drafting": [], "submitted": [],
+        "awarded": [], "declined": [],
+    }
+    for entry in entries:
+        stage = entry.get("stage", "discovered")
+        grouped.setdefault(stage, []).append(entry)
+    return grouped
+
+
+def get_pipeline_entry(conn: sqlite3.Connection, entry_id: int) -> dict | None:
+    """Get a single pipeline entry by ID."""
+    row = conn.execute(
+        "SELECT * FROM pipeline_entries WHERE id = ?", (entry_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_pipeline_entry_by_target(
+    conn: sqlite3.Connection,
+    opportunity_id: int | None = None,
+    foundation_id: int | None = None,
+) -> dict | None:
+    """Get a pipeline entry by opportunity or foundation ID."""
+    if opportunity_id:
+        row = conn.execute(
+            "SELECT * FROM pipeline_entries WHERE opportunity_id = ?",
+            (opportunity_id,),
+        ).fetchone()
+    elif foundation_id:
+        row = conn.execute(
+            "SELECT * FROM pipeline_entries WHERE foundation_id = ?",
+            (foundation_id,),
+        ).fetchone()
+    else:
+        return None
+    return dict(row) if row else None
+
+
+def get_dashboard_stats(conn: sqlite3.Connection) -> dict:
+    """Get extended dashboard statistics."""
+    base = get_pipeline_stats(conn)
+    pipeline_count = conn.execute("SELECT COUNT(*) FROM pipeline_entries").fetchone()[0]
+    base["pipeline_entries"] = pipeline_count
+
+    # Deadline breakdown
+    upcoming_30 = conn.execute(
+        """SELECT COUNT(*) FROM opportunities
+        WHERE deadline != '' AND deadline IS NOT NULL
+        AND date(deadline) BETWEEN date('now') AND date('now', '+30 days')"""
+    ).fetchone()[0]
+    upcoming_60 = conn.execute(
+        """SELECT COUNT(*) FROM opportunities
+        WHERE deadline != '' AND deadline IS NOT NULL
+        AND date(deadline) BETWEEN date('now', '+31 days') AND date('now', '+60 days')"""
+    ).fetchone()[0]
+    base["deadlines_30"] = upcoming_30
+    base["deadlines_60"] = upcoming_60
+
+    return base

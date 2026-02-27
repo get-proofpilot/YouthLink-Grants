@@ -448,6 +448,23 @@ def loi(ctx, foundation_id, guidelines_file, guidelines_url, amount, project, ou
 
 
 @cli.command()
+@click.option("--host", default="0.0.0.0", help="Host to bind to")
+@click.option("--port", default=5000, type=int, help="Port to listen on")
+@click.option("--debug", is_flag=True, help="Enable debug mode")
+@click.pass_context
+def dashboard(ctx, host, port, debug):
+    """Launch the admin dashboard web server."""
+    from grant_intel.dashboard.app import create_app
+
+    app = create_app(
+        config_path=ctx.parent.params.get("config_path", "config/org_profile.yaml"),
+        db_path=ctx.obj["db_path"],
+    )
+    click.echo(f"Starting dashboard on http://{host}:{port}")
+    app.run(host=host, port=port, debug=debug)
+
+
+@cli.command()
 @click.pass_context
 def status(ctx):
     """Show pipeline statistics."""

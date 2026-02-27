@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Draft: {{ draft.project_name if draft else 'Not Found' }}{% endblock %}
+{% block content %}
+{% if not draft %}
+<div class="alert alert-danger">Draft not found.</div>
+{% else %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('drafts.index') }}">Drafts</a></li>
+    <li class="breadcrumb-item active">{{ (draft.project_name or draft.funder_name or 'Draft')|truncate(40) }}</li>
+  </ol>
+</nav>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h4 class="mb-1">{{ draft.project_name or 'Untitled Draft' }}</h4>
+    <p class="text-muted mb-0">
+      {{ draft.funder_name or 'Unknown funder' }}
+      {% if draft.draft_type == 'federal_narrative' %}
+        <span class="badge bg-primary ms-2">Federal Narrative</span>
+      {% elif draft.draft_type == 'foundation_loi' %}
+        <span class="badge bg-info text-dark ms-2">LOI</span>
+      {% endif %}
+    </p>
+  </div>
+  <div>
+    {{ draft.status|draft_status_badge|safe }}
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Left column: Draft content -->
+  <div class="col-lg-8">
+    {% if sections %}
+    <!-- Section tabs -->
+    <div class="card">
+      <div class="card-header p-0">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+          {% for name in sections %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {{ 'active' if loop.first }}" id="tab-{{ loop.index }}"
+                    data-bs-toggle="tab" data-bs-target="#section-{{ loop.index }}"
+                    type="button" role="tab">{{ name|truncate(25) }}</button>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="card-body">
+        <div class="tab-content">
+          {% for name, content in sections.items() %}
+          <div class="tab-pane fade {{ 'show active' if loop.first }}"
+               id="section-{{ loop.index }}" role="tabpanel">
+            <h5 class="mb-3">{{ name }}</h5>
+            <div class="draft-content">{{ content|highlight_inserts|safe }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% elif draft.full_draft %}
+    <!-- Full draft (plain text) -->
+    <div class="card">
+      <div class="card-header"><strong>Full Draft</strong></div>
+      <div class="card-body">
+        <div class="draft-content">{{ draft.full_draft|highlight_inserts|safe }}</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="card-body">
+        <p class="text-muted">No draft content available.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right column: Status + metadata -->
+  <div class="col-lg-4">
+    <!-- Status Workflow -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Status</strong></div>
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small mb-2">
+            {% for s in ['draft', 'review', 'submitted'] %}
+            <span class="badge {{ 'bg-primary' if draft.status == s else 'bg-light text-dark border' }}">{{ s|title }}</span>
+            {% endfor %}
+          </div>
+          <div class="progress" style="height: 6px;">
+            {% set progress = {'draft': 33, 'review': 66, 'submitted': 100} %}
+            <div class="progress-bar" style="width: {{ progress.get(draft.status, 33) }}%"></div>
+          </div>
+        </div>
+        <form method="post" action="{{ url_for('drafts.change_status', draft_id=draft.id) }}">
+          <select name="status" class="form-select form-select-sm mb-2">
+            <option value="draft" {{ 'selected' if draft.status == 'draft' }}>Draft</option>
+            <option value="review" {{ 'selected' if draft.status == 'review' }}>In Review</option>
+            <option value="submitted" {{ 'selected' if draft.status == 'submitted' }}>Submitted</option>
+          </select>
+          <button type="submit" class="btn btn-sm btn-outline-primary w-100">Update Status</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Metadata -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Details</strong></div>
+      <div class="card-body">
+        <div class="mb-2">
+          <small class="text-muted">Created</small>
+          <div>{{ draft.created_at or 'N/A' }}</div>
+        </div>
+        <div class="mb-2">
+          <small class="text-muted">Updated</small>
+          <div>{{ draft.updated_at or 'N/A' }}</div>
+        </div>
+        {% if sections %}
+        <div class="mb-2">
+          <small class="text-muted">Sections</small>
+          <div>{{ sections|length }} sections</div>
+        </div>
+        {% endif %}
+        {% if draft.file_path %}
+        <div>
+          <small class="text-muted">File</small>
+          <div class="small text-break">{{ draft.file_path }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Insert Placeholders Legend -->
+    <div class="card">
+      <div class="card-header"><strong>Notes</strong></div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">Look for <mark>[INSERT: ...]</mark> placeholders in the draft. These indicate areas where specific data, names, or details need to be filled in.</p>
+        <p class="small text-muted mb-0">Review the draft carefully and customize it before submission.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,92 @@
+/* YLM Grant Intelligence Dashboard — custom styles */
+
+:root {
+  --ylm-blue: #2c5282;
+  --ylm-green: #276749;
+  --ylm-orange: #975a16;
+  --ylm-red: #9b2c2c;
+  --ylm-light-blue: #ebf8ff;
+}
+
+.bg-ylm-blue {
+  background-color: var(--ylm-blue) !important;
+}
+
+/* Stat cards */
+.stat-card {
+  border-left: 4px solid var(--ylm-blue);
+  background: var(--ylm-light-blue);
+}
+.stat-card .stat-number {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ylm-blue);
+}
+.stat-card .stat-label {
+  color: #4a5568;
+  font-size: 0.85rem;
+}
+
+/* Score colors */
+.score-high { color: var(--ylm-green) !important; font-weight: 700; }
+.score-mid { color: var(--ylm-orange) !important; font-weight: 700; }
+.score-low { color: var(--ylm-red) !important; font-weight: 700; }
+
+/* Table hover */
+.table-dashboard tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.table-dashboard tbody tr:hover {
+  background: var(--ylm-light-blue) !important;
+}
+
+/* Score distribution bars */
+.score-bar {
+  height: 24px;
+  border-radius: 4px;
+  display: inline-block;
+  min-width: 4px;
+}
+
+/* Priority badge */
+.priority-high { color: var(--ylm-green); }
+.priority-medium { color: var(--ylm-orange); }
+.priority-low { color: var(--ylm-red); }
+
+/* Pipeline columns */
+.pipeline-col {
+  min-width: 200px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1rem;
+}
+.pipeline-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Sidebar active */
+#sidebar .nav-link.active {
+  background: rgba(255,255,255,0.2) !important;
+  border-radius: 6px;
+}
+
+/* Insert highlight */
+mark.bg-warning {
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Match checklist */
+.match-pass { border-left: 3px solid var(--ylm-green); }
+.match-fail { border-left: 3px solid var(--ylm-red); }
+.match-warn { border-left: 3px solid var(--ylm-orange); }
+
+/* Responsive sidebar collapse */
+@media (max-width: 768px) {
+  #sidebar { display: none !important; }
+}

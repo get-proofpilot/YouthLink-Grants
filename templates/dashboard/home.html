@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h4 class="mb-4">Dashboard Overview</h4>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="stat-number">{{ stats.total_opportunities }}</div>
+        <div class="stat-label">Opportunities</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="stat-number">{{ stats.scored_opportunities }}</div>
+        <div class="stat-label">Scored</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="stat-number">{{ stats.total_foundations }}</div>
+        <div class="stat-label">Foundations</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="stat-number">{{ stats.total_drafts }}</div>
+        <div class="stat-label">Drafts</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Top Opportunities -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Top Opportunities by Priority</strong>
+        <a href="{{ url_for('opportunities.index') }}" class="btn btn-sm btn-outline-primary">View All</a>
+      </div>
+      <div class="card-body p-0">
+        {% if top_opportunities %}
+        <table class="table table-sm table-dashboard mb-0">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Priority</th>
+              <th>Score</th>
+              <th>Title</th>
+              <th>Deadline</th>
+              <th>Award Range</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for opp in top_opportunities %}
+            <tr data-href="{{ url_for('opportunities.detail', opp_id=opp.id) }}">
+              <td>{{ loop.index }}</td>
+              <td><span class="priority-{{ opp.priority_label|lower }}">{{ opp.priority_score }}</span></td>
+              <td class="{{ opp.score|score_class }}">{{ opp.score or '--' }}/10</td>
+              <td>
+                {{ opp.title|truncate(50) }}
+                {{ opp.urgency|urgency_badge|safe }}
+              </td>
+              <td>{{ opp.deadline or 'N/A' }} <small class="text-muted">{{ opp.deadline|relative_date }}</small></td>
+              <td>
+                {% if opp.award_floor or opp.award_ceiling %}
+                  {{ opp.award_floor|currency }} – {{ opp.award_ceiling|currency }}
+                {% else %}N/A{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3">No scored opportunities yet. Run a search and score to get started.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar: Score Distribution + Pipeline + Quick Actions -->
+  <div class="col-lg-4">
+    <!-- Score Distribution -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Score Distribution</strong></div>
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <span class="badge bg-success me-2">High (7-10)</span>
+          <div class="progress flex-grow-1" style="height: 20px;">
+            <div class="progress-bar bg-success" style="width: {{ (distribution.high / (distribution.high + distribution.medium + distribution.low + 1)) * 100 }}%">{{ distribution.high }}</div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center mb-2">
+          <span class="badge bg-warning text-dark me-2">Mid (4-6)&nbsp;&nbsp;</span>
+          <div class="progress flex-grow-1" style="height: 20px;">
+            <div class="progress-bar bg-warning" style="width: {{ (distribution.medium / (distribution.high + distribution.medium + distribution.low + 1)) * 100 }}%">{{ distribution.medium }}</div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center">
+          <span class="badge bg-danger me-2">Low (1-3)&nbsp;&nbsp;</span>
+          <div class="progress flex-grow-1" style="height: 20px;">
+            <div class="progress-bar bg-danger" style="width: {{ (distribution.low / (distribution.high + distribution.medium + distribution.low + 1)) * 100 }}%">{{ distribution.low }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Deadlines -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Upcoming Deadlines</strong></div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="badge bg-danger">Next 30 days</span>
+          <strong>{{ stats.deadlines_30 }}</strong>
+        </div>
+        <div class="d-flex justify-content-between">
+          <span class="badge bg-warning text-dark">31-60 days</span>
+          <strong>{{ stats.deadlines_60 }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline Summary -->
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between">
+        <strong>Pipeline</strong>
+        <a href="{{ url_for('pipeline.index') }}" class="btn btn-sm btn-outline-secondary">View</a>
+      </div>
+      <div class="card-body">
+        {% for stage in ['discovered', 'drafting', 'submitted', 'awarded'] %}
+        <div class="d-flex justify-content-between mb-1">
+          <span>{{ stage|title }}</span>
+          <span class="badge bg-secondary">{{ pipeline_counts.get(stage, 0) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+      <div class="card-header"><strong>Quick Actions</strong></div>
+      <div class="card-body d-grid gap-2">
+        <form method="post" action="{{ url_for('actions.trigger_search') }}">
+          <button type="submit" class="btn btn-outline-primary w-100" data-confirm="Run Grants.gov search? This may take a minute.">
+            <i class="bi bi-search me-1"></i>Run Search
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('actions.trigger_scoring') }}">
+          <button type="submit" class="btn btn-outline-primary w-100" data-confirm="Score all unscored items? This uses the Claude API.">
+            <i class="bi bi-star me-1"></i>Score All
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

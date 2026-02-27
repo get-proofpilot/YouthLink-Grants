@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}{{ opp.title if opp else 'Not Found' }}{% endblock %}
+{% block content %}
+{% if not opp %}
+<div class="alert alert-danger">Opportunity not found.</div>
+{% else %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('opportunities.index') }}">Opportunities</a></li>
+    <li class="breadcrumb-item active">{{ opp.title|truncate(40) }}</li>
+  </ol>
+</nav>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h4 class="mb-1">{{ opp.title }}</h4>
+    <p class="text-muted mb-0">{{ opp.agency }}</p>
+  </div>
+  <div class="text-end">
+    <span class="badge {{ opp.score|score_bg }} fs-5">{{ opp.score or '--' }}/10</span>
+    {{ opp.urgency|urgency_badge|safe }}
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Left column: Details + Description -->
+  <div class="col-lg-8">
+    <!-- Details Card -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Details</strong></div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-sm-6">
+            <small class="text-muted">Deadline</small>
+            <div>{{ opp.deadline or 'N/A' }} <small class="text-muted">{{ opp.deadline|relative_date }}</small></div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Award Range</small>
+            <div>
+              {% if opp.award_floor or opp.award_ceiling %}
+                {{ opp.award_floor|currency }} – {{ opp.award_ceiling|currency }}
+              {% else %}N/A{% endif %}
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Status</small>
+            <div>{{ opp.status|title }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Keyword Match</small>
+            <div>{{ opp.matched_keyword or 'N/A' }} <span class="badge bg-secondary">Tier {{ opp.keyword_tier or '?' }}</span></div>
+          </div>
+          <div class="col-12">
+            <small class="text-muted">Eligibility</small>
+            <div>{{ opp.eligibility or 'Not specified' }}</div>
+          </div>
+          {% if opp.url %}
+          <div class="col-12">
+            <a href="{{ opp.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-box-arrow-up-right me-1"></i>View on Grants.gov
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Description</strong></div>
+      <div class="card-body">
+        <p>{{ opp.description or 'No description available.' }}</p>
+      </div>
+    </div>
+
+    <!-- Score Explanation -->
+    {% if opp.explanation %}
+    <div class="card mb-3">
+      <div class="card-header"><strong>AI Score Explanation</strong></div>
+      <div class="card-body">
+        <p>{{ opp.explanation }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Related Drafts -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Drafts</strong>
+        <form method="post" action="{{ url_for('actions.trigger_draft', opp_id=opp.id) }}">
+          <button type="submit" class="btn btn-sm btn-success" data-confirm="Generate a draft? This uses the Claude API and may take a few minutes.">
+            <i class="bi bi-pencil me-1"></i>Generate Draft
+          </button>
+        </form>
+      </div>
+      <div class="card-body p-0">
+        {% if drafts %}
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Type</th><th>Status</th><th>Created</th><th></th></tr></thead>
+          <tbody>
+            {% for d in drafts %}
+            <tr>
+              <td>{{ d.draft_type }}</td>
+              <td>{{ d.status|draft_status_badge|safe }}</td>
+              <td>{{ d.created_at }}</td>
+              <td><a href="{{ url_for('drafts.detail', draft_id=d.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No drafts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column: Priority + Requirements + Pipeline -->
+  <div class="col-lg-4">
+    <!-- Priority Breakdown -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Priority Score: {{ priority.priority_score }}</strong></div>
+      <div class="card-body">
+        {% for name, factor in priority.factors.items() %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small">
+            <span>{{ name|replace('_', ' ')|title }} ({{ (factor.weight * 100)|int }}%)</span>
+            <strong class="{{ factor.score|score_class }}">{{ factor.score }}/10</strong>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div class="progress-bar {{ factor.score|score_bg }}" style="width: {{ factor.score * 10 }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Requirement Match Checklist -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <strong>Requirement Match</strong>
+        <small class="text-muted ms-2">{{ match_summary.pass_count }}/{{ match_summary.total }} met</small>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          {% for check in checks %}
+          <tr class="{{ check.status|match_class }}">
+            <td class="ps-3">{{ check.status|match_icon|safe }}</td>
+            <td>
+              <strong class="small">{{ check.label }}</strong><br>
+              <small class="text-muted">{{ check.detail }}</small>
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="card">
+      <div class="card-header"><strong>Pipeline</strong></div>
+      <div class="card-body">
+        {% if pipeline_entry %}
+          <p>Stage: {{ pipeline_entry.stage|stage_badge|safe }}</p>
+          <form method="post" action="{{ url_for('pipeline.change_stage', entry_id=pipeline_entry.id) }}">
+            <select name="stage" class="form-select form-select-sm mb-2">
+              {% for s in ['discovered', 'drafting', 'submitted', 'awarded', 'declined'] %}
+              <option value="{{ s }}" {{ 'selected' if pipeline_entry.stage == s }}>{{ s|title }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-primary w-100">Update Stage</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('pipeline.add_entry') }}">
+            <input type="hidden" name="opportunity_id" value="{{ opp.id }}">
+            <button type="submit" class="btn btn-sm btn-outline-success w-100">
+              <i class="bi bi-plus me-1"></i>Add to Pipeline
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

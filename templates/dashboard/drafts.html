@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Drafts{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0">Grant Drafts</h4>
+  <span class="text-muted">{{ drafts|length }} drafts</span>
+</div>
+
+<!-- Status Filter -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-0">Status</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="draft" {{ 'selected' if request.args.get('status') == 'draft' }}>Draft</option>
+          <option value="review" {{ 'selected' if request.args.get('status') == 'review' }}>Review</option>
+          <option value="submitted" {{ 'selected' if request.args.get('status') == 'submitted' }}>Submitted</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        <a href="{{ url_for('drafts.index') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if drafts %}
+<div class="table-responsive">
+  <table class="table table-sm table-dashboard">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Funder</th>
+        <th>Project</th>
+        <th>Type</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in drafts %}
+      <tr data-href="{{ url_for('drafts.detail', draft_id=d.id) }}">
+        <td>{{ loop.index }}</td>
+        <td>{{ (d.funder_name or 'N/A')|truncate(30) }}</td>
+        <td>{{ (d.project_name or 'N/A')|truncate(30) }}</td>
+        <td>
+          {% if d.draft_type == 'federal_narrative' %}
+            <span class="badge bg-primary">Federal</span>
+          {% elif d.draft_type == 'foundation_loi' %}
+            <span class="badge bg-info text-dark">LOI</span>
+          {% else %}
+            <span class="badge bg-secondary">{{ d.draft_type }}</span>
+          {% endif %}
+        </td>
+        <td>{{ d.status|draft_status_badge|safe }}</td>
+        <td class="text-muted small">{{ d.created_at }}</td>
+        <td><a href="{{ url_for('drafts.detail', draft_id=d.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">No drafts yet. Generate one from an opportunity or foundation detail page.</div>
+{% endif %}
+{% endblock %}

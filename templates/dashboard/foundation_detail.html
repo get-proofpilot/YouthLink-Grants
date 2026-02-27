@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ foundation.name if foundation else 'Not Found' }}{% endblock %}
+{% block content %}
+{% if not foundation %}
+<div class="alert alert-danger">Foundation not found.</div>
+{% else %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('foundations.index') }}">Foundations</a></li>
+    <li class="breadcrumb-item active">{{ foundation.name|truncate(40) }}</li>
+  </ol>
+</nav>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h4 class="mb-1">{{ foundation.name }}</h4>
+    <p class="text-muted mb-0">{{ foundation.state or 'Unknown location' }}</p>
+  </div>
+  <div class="text-end">
+    <span class="badge {{ foundation.score|score_bg }} fs-5">{{ foundation.score or '--' }}/10</span>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Left column -->
+  <div class="col-lg-8">
+    <!-- Details Card -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Foundation Details</strong></div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-sm-6">
+            <small class="text-muted">EIN</small>
+            <div>{{ foundation.ein or 'N/A' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Total Giving</small>
+            <div>{{ foundation.total_giving|currency }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Total Assets</small>
+            <div>{{ foundation.total_assets|currency }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">NTEE Code</small>
+            <div>{{ foundation.ntee_code or 'N/A' }}</div>
+          </div>
+          <div class="col-12">
+            <small class="text-muted">Focus Areas</small>
+            <div>{{ foundation.focus_areas or 'Not specified' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score Explanation -->
+    {% if foundation.explanation %}
+    <div class="card mb-3">
+      <div class="card-header"><strong>AI Score Explanation</strong></div>
+      <div class="card-body">
+        <p>{{ foundation.explanation }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Historical Grants -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Grant History</strong></div>
+      <div class="card-body p-0">
+        {% if grants %}
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Recipient</th><th>Amount</th><th>Purpose</th><th>Year</th></tr></thead>
+          <tbody>
+            {% for g in grants %}
+            <tr>
+              <td>{{ g.recipient_name or 'N/A' }}</td>
+              <td>{{ g.amount|currency }}</td>
+              <td class="text-muted small">{{ (g.purpose or 'N/A')|truncate(60) }}</td>
+              <td>{{ g.tax_year or 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No grant history available.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Related Drafts -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>LOI Drafts</strong>
+      </div>
+      <div class="card-body p-0">
+        {% if drafts %}
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Project</th><th>Status</th><th>Created</th><th></th></tr></thead>
+          <tbody>
+            {% for d in drafts %}
+            <tr>
+              <td>{{ d.project_name or d.draft_type }}</td>
+              <td>{{ d.status|draft_status_badge|safe }}</td>
+              <td>{{ d.created_at }}</td>
+              <td><a href="{{ url_for('drafts.detail', draft_id=d.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted p-3 mb-0">No LOI drafts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="col-lg-4">
+    <!-- Generate LOI -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Generate LOI</strong></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('actions.trigger_loi', foundation_id=foundation.id) }}">
+          <div class="mb-2">
+            <label class="form-label small">Project Name</label>
+            <input type="text" name="project_name" class="form-control form-control-sm" required placeholder="e.g., Youth Leadership Program">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Request Amount ($)</label>
+            <input type="number" name="amount" class="form-control form-control-sm" required placeholder="e.g., 25000">
+          </div>
+          <button type="submit" class="btn btn-sm btn-success w-100" data-confirm="Generate an LOI? This uses the Claude API.">
+            <i class="bi bi-pencil me-1"></i>Generate LOI
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="card">
+      <div class="card-header"><strong>Pipeline</strong></div>
+      <div class="card-body">
+        {% if pipeline_entry %}
+          <p>Stage: {{ pipeline_entry.stage|stage_badge|safe }}</p>
+          <form method="post" action="{{ url_for('pipeline.change_stage', entry_id=pipeline_entry.id) }}">
+            <select name="stage" class="form-select form-select-sm mb-2">
+              {% for s in ['discovered', 'drafting', 'submitted', 'awarded', 'declined'] %}
+              <option value="{{ s }}" {{ 'selected' if pipeline_entry.stage == s }}>{{ s|title }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-primary w-100">Update Stage</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('pipeline.add_entry') }}">
+            <input type="hidden" name="foundation_id" value="{{ foundation.id }}">
+            <button type="submit" class="btn btn-sm btn-outline-success w-100">
+              <i class="bi bi-plus me-1"></i>Add to Pipeline
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

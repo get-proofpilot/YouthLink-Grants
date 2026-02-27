@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Pipeline{% endblock %}
+{% block content %}
+<h4 class="mb-4">Grant Pipeline</h4>
+
+<div class="row g-3">
+  {% for stage in stages %}
+  <div class="col">
+    <div class="card h-100">
+      <div class="card-header text-center">
+        {{ stage|stage_badge|safe }}
+        <span class="badge bg-light text-dark ms-1">{{ pipeline.get(stage, [])|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        {% for entry in pipeline.get(stage, []) %}
+        <div class="card mb-2 pipeline-card">
+          <div class="card-body p-2">
+            <strong class="small d-block mb-1">
+              {% if entry.opportunity_title %}
+                <a href="{{ url_for('opportunities.detail', opp_id=entry.opportunity_id) }}" class="text-decoration-none">
+                  {{ entry.opportunity_title|truncate(35) }}
+                </a>
+              {% elif entry.foundation_name %}
+                <a href="{{ url_for('foundations.detail', foundation_id=entry.foundation_id) }}" class="text-decoration-none">
+                  {{ entry.foundation_name|truncate(35) }}
+                </a>
+              {% else %}
+                Entry #{{ entry.id }}
+              {% endif %}
+            </strong>
+
+            {% if entry.deadline %}
+            <div class="small text-muted mb-1">Deadline: {{ entry.deadline }}</div>
+            {% endif %}
+
+            {% if entry.notes %}
+            <div class="small text-muted mb-1">{{ entry.notes|truncate(60) }}</div>
+            {% endif %}
+
+            <!-- Stage change -->
+            <form method="post" action="{{ url_for('pipeline.change_stage', entry_id=entry.id) }}" class="mb-1">
+              <select name="stage" class="form-select form-select-sm mb-1" style="font-size: 0.75rem;">
+                {% for s in stages %}
+                <option value="{{ s }}" {{ 'selected' if entry.stage == s }}>{{ s|title }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-outline-primary btn-sm w-100" style="font-size: 0.7rem;">Move</button>
+            </form>
+
+            <!-- Notes -->
+            <button class="btn btn-outline-secondary btn-sm w-100" style="font-size: 0.7rem;"
+                    data-bs-toggle="collapse" data-bs-target="#notes-{{ entry.id }}">
+              Notes
+            </button>
+            <div class="collapse mt-1" id="notes-{{ entry.id }}">
+              <form method="post" action="{{ url_for('pipeline.edit_notes', entry_id=entry.id) }}">
+                <textarea name="notes" class="form-control form-control-sm mb-1" rows="2" style="font-size: 0.75rem;">{{ entry.notes or '' }}</textarea>
+                <button type="submit" class="btn btn-sm btn-outline-success w-100" style="font-size: 0.7rem;">Save</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+
+        {% if not pipeline.get(stage, []) %}
+        <p class="text-muted text-center small mb-0 py-3">No entries</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

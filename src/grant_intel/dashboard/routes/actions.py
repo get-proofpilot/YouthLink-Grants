@@ -1,0 +1,207 @@
+"""Action endpoints — trigger scoring, search, drafts from the dashboard."""
+
+import logging
+import sys
+
+from flask import Blueprint, current_app, flash, redirect, request, url_for
+from flask_login import login_required
+
+from grant_intel.db import (
+    get_connection,
+    get_unscored_foundations,
+    get_unscored_opportunities,
+    init_db,
+    insert_draft,
+    insert_score,
+    upsert_foundation,
+    upsert_opportunity,
+)
+
+logger = logging.getLogger(__name__)
+
+actions_bp = Blueprint("actions", __name__)
+
+
+@actions_bp.route("/search", methods=["POST"])
+@login_required
+def trigger_search():
+    """Run Grants.gov search."""
+    config = current_app.config["GRANT_CONFIG"]
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.sources.grants_gov import discover_grants
+
+        results = discover_grants(config.keywords)
+        new_count = 0
+        for opp in results:
+            if upsert_opportunity(conn, opp):
+                new_count += 1
+        flash(f"Search complete: {len(results)} opportunities found ({new_count} new).", "success")
+    except Exception as e:
+        logger.exception("Search failed")
+        flash(f"Search failed: {e}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for("main.home"))
+
+
+@actions_bp.route("/score", methods=["POST"])
+@login_required
+def trigger_scoring():
+    """Score all unscored opportunities and foundations."""
+    config = current_app.config["GRANT_CONFIG"]
+
+    if not config.anthropic_api_key:
+        flash("ANTHROPIC_API_KEY not configured.", "danger")
+        return redirect(url_for("main.home"))
+
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.scoring.matcher import score_foundations, score_opportunities
+
+        unscored_opps = get_unscored_opportunities(conn)
+        unscored_founds = get_unscored_foundations(conn)
+
+        scored = 0
+        if unscored_opps:
+            opp_scores = score_opportunities(config.anthropic_api_key, config.org, unscored_opps)
+            for s in opp_scores:
+                insert_score(conn, s)
+            scored += len(opp_scores)
+
+        if unscored_founds:
+            f_scores = score_foundations(config.anthropic_api_key, config.org, unscored_founds)
+            for s in f_scores:
+                insert_score(conn, s)
+            scored += len(f_scores)
+
+        flash(f"Scoring complete: {scored} items scored.", "success")
+    except Exception as e:
+        logger.exception("Scoring failed")
+        flash(f"Scoring failed: {e}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for("main.home"))
+
+
+@actions_bp.route("/draft/<int:opp_id>", methods=["POST"])
+@login_required
+def trigger_draft(opp_id):
+    """Generate a federal narrative draft for an opportunity."""
+    config = current_app.config["GRANT_CONFIG"]
+
+    if not config.anthropic_api_key:
+        flash("ANTHROPIC_API_KEY not configured.", "danger")
+        return redirect(url_for("opportunities.detail", opp_id=opp_id))
+
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.db import get_opportunity_by_id
+        from grant_intel.writer.agent import build_draft_record, draft_federal_narrative
+
+        opp = get_opportunity_by_id(conn, opp_id)
+        if not opp:
+            flash("Opportunity not found.", "danger")
+            return redirect(url_for("opportunities.index"))
+
+        requirements = {
+            "funder_name": opp.get("agency", ""),
+            "program_name": opp.get("title", ""),
+            "deadline": opp.get("deadline", ""),
+            "award_range": {"min": opp.get("award_floor", 0) or 0, "max": opp.get("award_ceiling", 0) or 0},
+            "eligible_applicants": opp.get("eligibility", ""),
+            "required_sections": [],
+            "page_limits": {},
+            "evaluation_criteria": [],
+            "focus_areas": [],
+            "restrictions": [],
+            "questions_to_answer": [],
+            "raw_text": opp.get("description", ""),
+        }
+
+        filepath, sections = draft_federal_narrative(
+            api_key=config.anthropic_api_key,
+            org=config.org,
+            requirements=requirements,
+        )
+
+        record = build_draft_record(
+            opportunity_id=opp_id,
+            foundation_id=None,
+            draft_type="federal_narrative",
+            funder_name=requirements.get("funder_name", ""),
+            project_name=requirements.get("program_name", ""),
+            requirements=requirements,
+            sections=sections,
+            full_draft_path=filepath,
+        )
+        draft_id = insert_draft(conn, record)
+        flash(f"Draft generated! ({len(sections)} sections)", "success")
+        return redirect(url_for("drafts.detail", draft_id=draft_id))
+    except Exception as e:
+        logger.exception("Draft generation failed")
+        flash(f"Draft generation failed: {e}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for("opportunities.detail", opp_id=opp_id))
+
+
+@actions_bp.route("/loi/<int:foundation_id>", methods=["POST"])
+@login_required
+def trigger_loi(foundation_id):
+    """Generate a foundation LOI."""
+    config = current_app.config["GRANT_CONFIG"]
+
+    if not config.anthropic_api_key:
+        flash("ANTHROPIC_API_KEY not configured.", "danger")
+        return redirect(url_for("foundations.detail", foundation_id=foundation_id))
+
+    amount = request.form.get("amount", type=int)
+    project_name = request.form.get("project_name", "")
+
+    if not amount or not project_name:
+        flash("Amount and project name are required.", "danger")
+        return redirect(url_for("foundations.detail", foundation_id=foundation_id))
+
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.db import get_foundation_by_id
+        from grant_intel.writer.agent import build_draft_record, draft_foundation_loi
+
+        foundation = get_foundation_by_id(conn, foundation_id)
+        if not foundation:
+            flash("Foundation not found.", "danger")
+            return redirect(url_for("foundations.index"))
+
+        filepath, loi_text = draft_foundation_loi(
+            api_key=config.anthropic_api_key,
+            org=config.org,
+            requirements={},
+            funder_name=foundation["name"],
+            amount=amount,
+            project_name=project_name,
+        )
+
+        record = build_draft_record(
+            opportunity_id=None,
+            foundation_id=foundation_id,
+            draft_type="foundation_loi",
+            funder_name=foundation["name"],
+            project_name=project_name,
+            requirements={},
+            sections={"Letter of Inquiry": loi_text},
+            full_draft_path=filepath,
+        )
+        draft_id = insert_draft(conn, record)
+        flash("LOI generated!", "success")
+        return redirect(url_for("drafts.detail", draft_id=draft_id))
+    except Exception as e:
+        logger.exception("LOI generation failed")
+        flash(f"LOI generation failed: {e}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for("foundations.detail", foundation_id=foundation_id))

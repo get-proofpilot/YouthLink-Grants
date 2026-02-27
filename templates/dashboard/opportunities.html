@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Opportunities{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0">Grant Opportunities</h4>
+  <span class="text-muted">{{ opportunities|length }} results</span>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-0">Min Score</label>
+        <select name="min_score" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="7" {{ 'selected' if request.args.get('min_score') == '7' }}>7+ (High)</option>
+          <option value="4" {{ 'selected' if request.args.get('min_score') == '4' }}>4+ (Medium)</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Urgency</label>
+        <select name="urgency" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="30_day" {{ 'selected' if request.args.get('urgency') == '30_day' }}>Urgent (30d)</option>
+          <option value="60_day" {{ 'selected' if request.args.get('urgency') == '60_day' }}>Upcoming (60d)</option>
+          <option value="90_day" {{ 'selected' if request.args.get('urgency') == '90_day' }}>90 Days</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Keyword Tier</label>
+        <select name="tier" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="1" {{ 'selected' if request.args.get('tier') == '1' }}>Tier 1 (Best)</option>
+          <option value="2" {{ 'selected' if request.args.get('tier') == '2' }}>Tier 2</option>
+          <option value="3" {{ 'selected' if request.args.get('tier') == '3' }}>Tier 3</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        <a href="{{ url_for('opportunities.index') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Table -->
+{% if opportunities %}
+<div class="table-responsive">
+  <table class="table table-sm table-dashboard">
+    <thead>
+      <tr>
+        <th data-sort="num" data-col="0" style="cursor:pointer">#</th>
+        <th data-sort="num" data-col="1" style="cursor:pointer">Priority</th>
+        <th data-sort="num" data-col="2" style="cursor:pointer">Score</th>
+        <th data-sort="text" data-col="3" style="cursor:pointer">Title</th>
+        <th data-sort="text" data-col="4" style="cursor:pointer">Agency</th>
+        <th data-sort="text" data-col="5" style="cursor:pointer">Deadline</th>
+        <th>Urgency</th>
+        <th data-sort="num" data-col="7" style="cursor:pointer">Award Range</th>
+        <th>Tier</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for opp in opportunities %}
+      <tr data-href="{{ url_for('opportunities.detail', opp_id=opp.id) }}">
+        <td>{{ loop.index }}</td>
+        <td><span class="priority-{{ opp.priority_label|lower }}">{{ opp.priority_score }}</span></td>
+        <td class="{{ opp.score|score_class }}">{{ opp.score or '--' }}/10</td>
+        <td>{{ opp.title|truncate(60) }}</td>
+        <td class="text-muted small">{{ opp.agency|truncate(30) }}</td>
+        <td>{{ opp.deadline or 'N/A' }}</td>
+        <td>{{ opp.urgency|urgency_badge|safe }}</td>
+        <td>
+          {% if opp.award_floor or opp.award_ceiling %}
+            {{ opp.award_floor|currency }} – {{ opp.award_ceiling|currency }}
+          {% else %}N/A{% endif %}
+        </td>
+        <td><span class="badge bg-secondary">T{{ opp.keyword_tier or '?' }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">No opportunities found. Run a search to discover grants.</div>
+{% endif %}
+{% endblock %}

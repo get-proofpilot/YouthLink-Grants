@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h4 class="mb-4">Organization Settings</h4>
+
+<div class="row g-4">
+  <!-- Left column: Org Profile -->
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header"><strong>Organization Profile</strong></div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <small class="text-muted">Name</small>
+            <div class="fw-bold">{{ org.name }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">EIN</small>
+            <div>{{ org.ein or 'N/A' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Tax Status</small>
+            <div>{{ org.tax_status or 'N/A' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Years Active</small>
+            <div>{{ org.years_active or 'N/A' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Annual Budget</small>
+            <div>{{ org.annual_budget|currency if org.annual_budget else 'N/A' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Location</small>
+            <div>{{ org.city or '' }}{{ ', ' if org.city and org.state }}{{ org.state or '' }}</div>
+          </div>
+          <div class="col-12">
+            <small class="text-muted">Mission</small>
+            <div>{{ org.mission or 'Not specified' }}</div>
+          </div>
+          <div class="col-12">
+            <small class="text-muted">Programs</small>
+            <div>
+              {% if org.programs %}
+                {% for p in org.programs %}
+                  <span class="badge bg-light text-dark border me-1 mb-1">{{ p }}</span>
+                {% endfor %}
+              {% else %}
+                N/A
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-12">
+            <small class="text-muted">NTEE Codes</small>
+            <div>
+              {% if org.ntee_codes %}
+                {% for code in org.ntee_codes %}
+                  <span class="badge bg-secondary me-1">{{ code }}</span>
+                {% endfor %}
+              {% else %}
+                N/A
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keywords by Tier -->
+    <div class="card">
+      <div class="card-header"><strong>Search Keywords</strong></div>
+      <div class="card-body">
+        {% if keywords %}
+          {% for tier_data in keywords %}
+          <div class="mb-3">
+            <h6>
+              {% if tier_data.tier == 1 %}
+                <span class="badge bg-success">Tier 1 — Primary</span>
+              {% elif tier_data.tier == 2 %}
+                <span class="badge bg-warning text-dark">Tier 2 — Secondary</span>
+              {% else %}
+                <span class="badge bg-secondary">Tier {{ tier_data.tier }} — Exploratory</span>
+              {% endif %}
+            </h6>
+            <div>
+              {% for kw in tier_data.terms %}
+                <span class="badge bg-light text-dark border me-1 mb-1">{{ kw }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted mb-0">No keywords configured.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column: Similar Orgs + Config Info -->
+  <div class="col-lg-4">
+    <!-- Similar Organizations -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>Similar Organizations</strong></div>
+      <div class="card-body">
+        {% if similar_orgs %}
+          {% for org_name in similar_orgs %}
+          <div class="d-flex align-items-center mb-2">
+            <i class="bi bi-building me-2 text-muted"></i>
+            <span class="small">{{ org_name }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted small mb-0">No similar organizations configured.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Config Info -->
+    <div class="card">
+      <div class="card-header"><strong>Configuration</strong></div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Organization settings are loaded from <code>config/org_profile.yaml</code>.
+          To update these values, edit the config file and restart the dashboard.
+        </p>
+        <p class="small text-muted mb-0">
+          Search keywords are defined in <code>config/org_profile.yaml</code> under the <code>keywords</code> section.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

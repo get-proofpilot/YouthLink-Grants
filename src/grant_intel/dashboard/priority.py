@@ -24,7 +24,7 @@ def calculate_priority_score(opp: dict, org: OrgProfile) -> dict:
         priority_label: "High" | "Medium" | "Low"
         factors: dict of individual factor scores and details
     """
-    mission = opp.get("score") or 5
+    mission = opp.get("score") or opp.get("rule_score") or 5
     urgency = _urgency_score(opp.get("urgency", ""), opp.get("deadline", ""))
     budget = _budget_match_score(opp.get("award_floor"), opp.get("award_ceiling"), org.budget_range)
     eligibility = _eligibility_score(opp.get("eligibility", ""), org)

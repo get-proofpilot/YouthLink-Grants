@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS opportunities (
     url TEXT,
     keyword_tier INTEGER,
     matched_keyword TEXT,
+    rule_score INTEGER,
+    rule_explanation TEXT,
     raw_json TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
@@ -122,6 +124,12 @@ CREATE TABLE IF NOT EXISTS grant_drafts (
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 
@@ -136,22 +144,61 @@ def get_connection(db_path: str) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection):
-    """Create all tables."""
+    """Create all tables and run migrations."""
     conn.executescript(SCHEMA_SQL)
     conn.commit()
+    _migrate_rule_score(conn)
+    _migrate_cfda_codes(conn)
     logger.info("Database initialized")
+
+
+def _migrate_rule_score(conn: sqlite3.Connection):
+    """Add rule_score and rule_explanation columns if missing (for existing DBs)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(opportunities)").fetchall()}
+    if "rule_score" not in cols:
+        conn.execute("ALTER TABLE opportunities ADD COLUMN rule_score INTEGER")
+        conn.execute("ALTER TABLE opportunities ADD COLUMN rule_explanation TEXT")
+        conn.commit()
+        logger.info("Migrated: added rule_score and rule_explanation columns")
+
+
+def _migrate_cfda_codes(conn: sqlite3.Connection):
+    """Add cfda_codes column and backfill from raw_json."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(opportunities)").fetchall()}
+    if "cfda_codes" not in cols:
+        conn.execute("ALTER TABLE opportunities ADD COLUMN cfda_codes TEXT")
+        conn.commit()
+        # Backfill from raw_json
+        rows = conn.execute("SELECT id, raw_json FROM opportunities WHERE raw_json IS NOT NULL").fetchall()
+        for row in rows:
+            try:
+                raw = json.loads(row[1])
+                cfda_list = raw.get("cfdaList", [])
+                if cfda_list:
+                    conn.execute(
+                        "UPDATE opportunities SET cfda_codes = ? WHERE id = ?",
+                        (",".join(cfda_list), row[0]),
+                    )
+            except (json.JSONDecodeError, TypeError):
+                pass
+        conn.commit()
+        logger.info("Migrated: added cfda_codes column and backfilled %d records", len(rows))
 
 
 def upsert_opportunity(conn: sqlite3.Connection, opp: dict) -> bool:
     """Insert or update an opportunity. Returns True if new."""
     try:
+        # Extract CFDA codes from raw data
+        raw = opp.get("raw", {})
+        cfda_codes = ",".join(raw.get("cfdaList", [])) if raw.get("cfdaList") else ""
+
         conn.execute(
             """INSERT INTO opportunities
             (source, opportunity_id, opportunity_number, title, agency, description,
              funding_category, award_floor, award_ceiling, expected_awards,
              deadline, posted_date, status, eligibility, url,
-             keyword_tier, matched_keyword, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             keyword_tier, matched_keyword, cfda_codes, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 opp.get("source", ""),
                 opp.get("opportunity_id", ""),
@@ -170,7 +217,8 @@ def upsert_opportunity(conn: sqlite3.Connection, opp: dict) -> bool:
                 opp.get("url", ""),
                 opp.get("keyword_tier", 0),
                 opp.get("matched_keyword", ""),
-                json.dumps(opp.get("raw", {})),
+                cfda_codes,
+                json.dumps(raw),
             ),
         )
         conn.commit()
@@ -298,6 +346,47 @@ def insert_score(conn: sqlite3.Connection, score: dict):
             score.get("model_used", ""),
         ),
     )
+    conn.commit()
+
+
+def update_rule_score(conn: sqlite3.Connection, opp_id: int, score: int, explanation: str):
+    """Update the rule_score and rule_explanation for an opportunity."""
+    conn.execute(
+        "UPDATE opportunities SET rule_score = ?, rule_explanation = ?, updated_at = datetime('now') WHERE id = ?",
+        (score, explanation, opp_id),
+    )
+    conn.commit()
+
+
+def get_rule_score_candidates(conn: sqlite3.Connection, threshold: int = 5) -> list[dict]:
+    """Get opportunities with rule_score >= threshold that lack AI scores."""
+    rows = conn.execute(
+        """SELECT o.* FROM opportunities o
+        LEFT JOIN scores s ON s.opportunity_id = o.id
+        WHERE o.rule_score >= ? AND s.id IS NULL
+        ORDER BY o.rule_score DESC""",
+        (threshold,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_unscored_rule_opportunities(conn: sqlite3.Connection) -> list[dict]:
+    """Get opportunities that haven't been rule-scored yet."""
+    rows = conn.execute(
+        """SELECT * FROM opportunities WHERE rule_score IS NULL ORDER BY deadline ASC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_all_for_rescoring(conn: sqlite3.Connection) -> list[dict]:
+    """Get ALL opportunities for re-scoring (ignores current rule_score)."""
+    rows = conn.execute("SELECT * FROM opportunities ORDER BY deadline ASC").fetchall()
+    return [dict(row) for row in rows]
+
+
+def clear_rule_scores(conn: sqlite3.Connection):
+    """Reset all rule scores to NULL for a full rescore pass."""
+    conn.execute("UPDATE opportunities SET rule_score = NULL, rule_explanation = NULL")
     conn.commit()
 
 
@@ -663,6 +752,23 @@ def get_pipeline_entry_by_target(
     else:
         return None
     return dict(row) if row else None
+
+
+def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
+    """Get a setting value by key."""
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str):
+    """Set a setting value (upsert)."""
+    conn.execute(
+        """INSERT INTO settings (key, value, updated_at)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')""",
+        (key, value),
+    )
+    conn.commit()
 
 
 def get_dashboard_stats(conn: sqlite3.Connection) -> dict:

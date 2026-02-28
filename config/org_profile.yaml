@@ -27,6 +27,7 @@ organization:
     - "T"     # Philanthropy/voluntarism
 
 search_keywords:
+  # Tier 1: Mission-specific terms (faith + leadership)
   tier1:
     - "pastoral development"
     - "ministry leadership training"
@@ -37,13 +38,28 @@ search_keywords:
     - "faith-based capacity building"
     - "peer learning networks clergy"
     - "nonprofit leadership coaching"
+    - "faith-based organization"
+    - "clergy renewal"
+  # Tier 2: Secular-language terms that federal grants actually use
+  # (Research shows federal programs use these phrases, and FBOs are eligible)
   tier2:
     - "youth ministry support"
     - "faith-based youth development"
     - "Christian education support"
     - "mentoring program development"
+    - "leadership development nonprofit"
+    - "capacity building community organization"
+    - "professional development youth serving"
+    - "mentoring training"
+    - "nonprofit capacity building"
+    - "community-based organization training"
+    - "peer learning nonprofit"
+    - "youth worker professional development"
+  # Tier 3: Broad terms — cast a wide net for adjacent programs
   tier3:
     - "small nonprofit capacity building"
     - "Arizona community development"
     - "nonprofit professional development"
     - "faith-based organization grants"
+    - "youth development training"
+    - "community engagement volunteer"

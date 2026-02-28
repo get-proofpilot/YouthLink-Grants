@@ -2,11 +2,13 @@
 
 import json
 import logging
+import sqlite3
 from datetime import date, datetime
 
 import anthropic
 
 from grant_intel.config import OrgProfile
+from grant_intel.scoring.rules import score_all_opportunities
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +170,59 @@ def score_opportunities(
             logger.exception("Error scoring batch %d-%d", i + 1, i + batch_size)
 
     return all_scores
+
+
+def score_with_funnel(
+    conn: sqlite3.Connection,
+    org: OrgProfile,
+    api_key: str | None = None,
+    ai_threshold: int = 6,
+    rules_only: bool = False,
+    batch_size: int = 5,
+) -> dict:
+    """3-tier scoring funnel: rules first, then AI for top candidates.
+
+    Returns summary dict with counts for each tier.
+    """
+    from grant_intel.db import (
+        get_rule_score_candidates,
+        get_unscored_rule_opportunities,
+        insert_score,
+        update_rule_score,
+    )
+
+    summary = {"rule_scored": 0, "ai_scored": 0, "ai_skipped": 0}
+
+    # ── Tier 1: Rule-score everything unscored ─────────────────────
+    unscored = get_unscored_rule_opportunities(conn)
+    if unscored:
+        results = score_all_opportunities(unscored)
+        for r in results:
+            update_rule_score(conn, r["id"], r["rule_score"], r["rule_explanation"])
+        summary["rule_scored"] = len(results)
+        logger.info("Rule-scored %d opportunities", len(results))
+
+    # ── Tier 2: AI-score top candidates ────────────────────────────
+    if rules_only or not api_key:
+        candidates = get_rule_score_candidates(conn, threshold=ai_threshold)
+        summary["ai_skipped"] = len(candidates)
+        logger.info("Skipping AI scoring (%s)", "rules-only mode" if rules_only else "no API key")
+        return summary
+
+    candidates = get_rule_score_candidates(conn, threshold=ai_threshold)
+    if candidates:
+        logger.info(
+            "Sending %d candidates (rule_score >= %d) to Claude AI",
+            len(candidates), ai_threshold,
+        )
+        ai_scores = score_opportunities(api_key, org, candidates, batch_size=batch_size)
+        for s in ai_scores:
+            insert_score(conn, s)
+        summary["ai_scored"] = len(ai_scores)
+    else:
+        logger.info("No candidates above AI threshold (%d)", ai_threshold)
+
+    return summary
 
 
 def score_foundations(

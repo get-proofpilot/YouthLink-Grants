@@ -42,14 +42,15 @@ def search_opportunities(
             headers={"Content-Type": "application/json"},
         )
         response.raise_for_status()
-        data = response.json()
+        raw = response.json()
+        data = raw.get("data", raw)
 
         hits = data.get("oppHits", [])
         if not hits:
             break
 
         all_results.extend(hits)
-        total = data.get("totalCount", 0)
+        total = data.get("hitCount", 0)
 
         logger.debug(
             "Got %d results (total: %d) for keyword=%r",

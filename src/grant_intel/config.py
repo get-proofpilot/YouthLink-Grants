@@ -92,3 +92,26 @@ def load_config(
         email_to=email_to,
         simpler_grants_api_key=os.getenv("SIMPLER_GRANTS_API_KEY", ""),
     )
+
+
+# Expanded foundation search keywords — used by CLI, dashboard, and weekly agent
+FOUNDATION_SEARCH_KEYWORDS = [
+    # Mission-specific
+    "youth ministry foundation",
+    "christian leadership grant",
+    "pastoral development",
+    "church leadership",
+    "clergy support",
+    "ministry coaching",
+    # Known funders of this work (search by name to find related foundations)
+    "lilly endowment",
+    "chatlos foundation",
+    "stewardship foundation",
+    "maclellan foundation",
+    # Broader secular terms that catch relevant foundations
+    "leadership development nonprofit",
+    "youth worker training",
+    "nonprofit capacity building",
+    "faith community",
+    "spiritual development",
+]

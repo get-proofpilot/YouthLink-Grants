@@ -113,13 +113,9 @@ def research(ctx):
     click.echo(f"Found {len(org_infos)} similar orgs ({new_orgs} new), {len(filings)} filings.")
 
     # Search for foundations by keyword
-    foundation_keywords = [
-        "youth ministry foundation",
-        "christian leadership grant",
-        "pastoral development",
-        "church leadership",
-    ]
-    click.echo("Searching for foundation prospects...")
+    from grant_intel.config import FOUNDATION_SEARCH_KEYWORDS
+    foundation_keywords = FOUNDATION_SEARCH_KEYWORDS
+    click.echo(f"Searching for foundation prospects ({len(foundation_keywords)} keywords)...")
     foundations = search_foundations_by_keyword(foundation_keywords, states=["AZ", ""])
 
     new_foundations = 0
@@ -133,47 +129,55 @@ def research(ctx):
 
 @cli.command()
 @click.option("--batch-size", default=5, help="Items per scoring batch")
+@click.option("--rules-only", is_flag=True, help="Only run rule-based scoring (no AI)")
+@click.option("--ai-threshold", default=6, type=int, help="Minimum rule score to send to AI (default 6)")
 @click.pass_context
-def score(ctx):
-    """Score opportunities and foundations using Claude AI."""
-    from grant_intel.scoring.matcher import score_foundations, score_opportunities
+def score(ctx, batch_size, rules_only, ai_threshold):
+    """Score opportunities and foundations using rule engine + Claude AI funnel."""
+    from grant_intel.scoring.matcher import score_foundations, score_with_funnel
 
     config = ctx.obj["config"]
     conn = get_connection(ctx.obj["db_path"])
+    init_db(conn)
 
-    if not config.anthropic_api_key:
-        click.echo("Error: ANTHROPIC_API_KEY not set. Add it to .env file.", err=True)
-        sys.exit(1)
+    api_key = config.anthropic_api_key if not rules_only else None
 
-    # Score opportunities
-    unscored_opps = get_unscored_opportunities(conn)
-    if unscored_opps:
-        click.echo(f"Scoring {len(unscored_opps)} opportunities...")
-        opp_scores = score_opportunities(
-            config.anthropic_api_key,
-            config.org,
-            unscored_opps,
-        )
-        for s in opp_scores:
-            insert_score(conn, s)
-        click.echo(f"Scored {len(opp_scores)} opportunities.")
+    if not rules_only and not config.anthropic_api_key:
+        click.echo("No ANTHROPIC_API_KEY set — running rules-only scoring.", err=True)
+        rules_only = True
+
+    # Score opportunities via funnel
+    click.echo("Scoring opportunities (rule engine → AI funnel)...")
+    summary = score_with_funnel(
+        conn=conn,
+        org=config.org,
+        api_key=api_key,
+        ai_threshold=ai_threshold,
+        rules_only=rules_only,
+        batch_size=batch_size,
+    )
+    click.echo(f"  Rule-scored: {summary['rule_scored']} opportunities")
+    if rules_only:
+        click.echo(f"  AI skipped:  {summary['ai_skipped']} candidates (rules-only mode)")
     else:
-        click.echo("No unscored opportunities.")
+        click.echo(f"  AI-scored:   {summary['ai_scored']} top candidates (threshold >= {ai_threshold})")
 
-    # Score foundations
-    unscored_foundations = get_unscored_foundations(conn)
-    if unscored_foundations:
-        click.echo(f"Scoring {len(unscored_foundations)} foundations...")
-        foundation_scores = score_foundations(
-            config.anthropic_api_key,
-            config.org,
-            unscored_foundations,
-        )
-        for s in foundation_scores:
-            insert_score(conn, s)
-        click.echo(f"Scored {len(foundation_scores)} foundations.")
-    else:
-        click.echo("No unscored foundations.")
+    # Score foundations (AI only, no rule engine for foundations)
+    if not rules_only and config.anthropic_api_key:
+        unscored_foundations = get_unscored_foundations(conn)
+        if unscored_foundations:
+            click.echo(f"Scoring {len(unscored_foundations)} foundations with AI...")
+            foundation_scores = score_foundations(
+                config.anthropic_api_key,
+                config.org,
+                unscored_foundations,
+                batch_size=batch_size,
+            )
+            for s in foundation_scores:
+                insert_score(conn, s)
+            click.echo(f"Scored {len(foundation_scores)} foundations.")
+        else:
+            click.echo("No unscored foundations.")
 
     conn.close()
 
@@ -241,6 +245,68 @@ def digest(ctx, dry_run):
 
 
 @cli.command()
+@click.option("--force", is_flag=True, help="Bypass the 6-day cooldown guard")
+@click.option("--dry-run", is_flag=True, help="Show what would be scored without calling AI")
+@click.option("--rescore", is_flag=True, help="Re-score ALL opportunities with latest rule engine")
+@click.option("--ai-threshold", default=6, type=int, help="Minimum rule score to send to AI (default 6)")
+@click.option("--batch-size", default=5, help="Items per AI scoring batch")
+@click.pass_context
+def weekly(ctx, force, dry_run, rescore, ai_threshold, batch_size):
+    """Run the weekly AI scoring cycle.
+
+    Refreshes data, rule-scores new opportunities, then AI-verifies all
+    candidates with rule_score >= threshold. Includes a 6-day cooldown to
+    prevent accidental double-runs.
+
+    \b
+    Trigger via:
+      - Railway cron: railway run grant-intel weekly
+      - System cron:  0 6 * * 1 cd /path && grant-intel weekly
+      - Manual:       grant-intel weekly
+    """
+    from grant_intel.scoring.weekly import run_weekly_scoring
+
+    config = ctx.obj["config"]
+    db_path = ctx.obj["db_path"]
+
+    click.echo("=== Weekly Scoring Agent ===\n")
+
+    if rescore:
+        from grant_intel.db import clear_rule_scores, get_connection as _gc
+        click.echo("Clearing all rule scores for full rescore...")
+        _conn = _gc(db_path)
+        clear_rule_scores(_conn)
+        _conn.close()
+
+    summary = run_weekly_scoring(
+        db_path=db_path,
+        config=config,
+        force=force,
+        dry_run=dry_run,
+        ai_threshold=ai_threshold,
+        batch_size=batch_size,
+    )
+
+    if summary["skipped"]:
+        click.echo(f"Skipped: {summary['skip_reason']}")
+        click.echo("Use --force to override the cooldown.")
+        return
+
+    prefix = "[DRY RUN] " if dry_run else ""
+    click.echo(f"{prefix}New opportunities:    {summary['new_opps']}")
+    click.echo(f"{prefix}New foundations:       {summary['new_foundations']}")
+    click.echo(f"{prefix}Rule-scored:          {summary['rule_scored']}")
+    click.echo(f"{prefix}AI candidates (>= {ai_threshold}): {summary['ai_candidates']}")
+    click.echo(f"{prefix}AI-scored opps:       {summary['ai_scored']}")
+    click.echo(f"{prefix}AI-scored foundations: {summary['foundations_scored']}")
+
+    if not dry_run:
+        click.echo("\n=== Weekly scoring complete ===")
+    else:
+        click.echo("\n=== Dry run complete — no AI calls made ===")
+
+
+@cli.command()
 @click.pass_context
 def run(ctx):
     """Run full pipeline: search, research, score, report, digest."""
@@ -254,8 +320,8 @@ def run(ctx):
     ctx.invoke(research)
     click.echo()
 
-    click.echo("Step 3/5: Scoring with Claude AI...")
-    ctx.invoke(score)
+    click.echo("Step 3/5: Running weekly scoring agent...")
+    ctx.invoke(weekly, force=True)
     click.echo()
 
     click.echo("Step 4/5: Generating reports...")

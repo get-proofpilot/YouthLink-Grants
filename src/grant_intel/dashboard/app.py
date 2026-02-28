@@ -1,12 +1,16 @@
 """Flask application factory for the Grant Intelligence dashboard."""
 
+import logging
 import os
+import threading
 from pathlib import Path
 
 from flask import Flask
 
 from grant_intel.config import load_config
 from grant_intel.db import get_connection, init_db
+
+logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _BASE_DIR.parent.parent.parent
@@ -33,7 +37,21 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
     # Ensure database is initialized
     conn = get_connection(db_path)
     init_db(conn)
+
+    # Populate data on first boot if database is empty
+    opp_count = conn.execute("SELECT COUNT(*) FROM opportunities").fetchone()[0]
     conn.close()
+
+    if opp_count == 0 and os.getenv("AUTO_POPULATE", "true").lower() == "true":
+        logger.info("Database empty — starting background data pipeline")
+
+        def _populate():
+            try:
+                _run_data_pipeline(grant_config, db_path)
+            except Exception:
+                logger.exception("Background data pipeline failed")
+
+        threading.Thread(target=_populate, daemon=True).start()
 
     # Setup Flask-Login
     from grant_intel.dashboard.auth import auth_bp, init_login_manager
@@ -67,3 +85,73 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
         return {"org_name": grant_config.org.name}
 
     return app
+
+
+def _run_data_pipeline(config, db_path: str):
+    """Run the grant discovery + foundation research pipeline."""
+    from grant_intel.db import upsert_foundation, upsert_opportunity, upsert_similar_org
+    from grant_intel.sources.grants_gov import discover_grants
+    from grant_intel.sources.propublica import research_similar_orgs, search_foundations_by_keyword
+
+    conn = get_connection(db_path)
+    init_db(conn)
+
+    # Step 1: Search Grants.gov
+    logger.info("Pipeline: searching Grants.gov with %d keywords...",
+                sum(len(v) for v in config.keywords.values()))
+    try:
+        results = discover_grants(config.keywords)
+        new_count = 0
+        for opp in results:
+            if upsert_opportunity(conn, opp):
+                new_count += 1
+        logger.info("Pipeline: found %d opportunities (%d new)", len(results), new_count)
+    except Exception:
+        logger.exception("Pipeline: Grants.gov search failed")
+
+    # Step 2: Research similar orgs
+    logger.info("Pipeline: researching %d similar organizations...", len(config.similar_orgs))
+    try:
+        org_infos, filings = research_similar_orgs(config.similar_orgs)
+        for org_info in org_infos:
+            upsert_similar_org(conn, org_info)
+        logger.info("Pipeline: found %d orgs, %d filings", len(org_infos), len(filings))
+    except Exception:
+        logger.exception("Pipeline: similar org research failed")
+
+    # Step 3: Search for foundations
+    logger.info("Pipeline: searching for foundation prospects...")
+    try:
+        from grant_intel.config import FOUNDATION_SEARCH_KEYWORDS
+        foundation_keywords = FOUNDATION_SEARCH_KEYWORDS
+        foundations = search_foundations_by_keyword(foundation_keywords, states=["AZ", ""])
+        new_foundations = 0
+        for f in foundations:
+            if upsert_foundation(conn, f):
+                new_foundations += 1
+        logger.info("Pipeline: found %d foundations (%d new)", len(foundations), new_foundations)
+    except Exception:
+        logger.exception("Pipeline: foundation search failed")
+
+    # Step 4: Rule-score all opportunities (instant, free — AI runs on weekly schedule only)
+    logger.info("Pipeline: running rule-based scoring (rules only, no AI)...")
+    try:
+        from grant_intel.scoring.matcher import score_with_funnel
+
+        conn = get_connection(db_path)
+        summary = score_with_funnel(
+            conn=conn,
+            org=config.org,
+            api_key=None,
+            ai_threshold=6,
+            rules_only=True,
+        )
+        logger.info(
+            "Pipeline: rule-scored %d opportunities (AI deferred to weekly schedule)",
+            summary["rule_scored"],
+        )
+    except Exception:
+        logger.exception("Pipeline: scoring failed")
+
+    conn.close()
+    logger.info("Pipeline: data population complete")

@@ -44,6 +44,12 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
     conn = get_connection(db_path)
     init_db(conn)
 
+    # Apply any saved keyword overrides from the settings table
+    from grant_intel.dashboard.routes.settings import load_keyword_overrides
+    overrides = load_keyword_overrides(db_path)
+    if overrides:
+        grant_config.keywords = overrides
+
     # Populate data on first boot if database is empty
     opp_count = conn.execute("SELECT COUNT(*) FROM opportunities").fetchone()[0]
     conn.close()

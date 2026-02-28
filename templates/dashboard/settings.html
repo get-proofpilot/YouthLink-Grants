@@ -4,7 +4,7 @@
 <h4 class="mb-4">Organization Settings</h4>
 
 <div class="row g-4">
-  <!-- Left column: Org Profile -->
+  <!-- Left column: Org Profile + Editable Keywords -->
   <div class="col-lg-8">
     <div class="card mb-3">
       <div class="card-header"><strong>Organization Profile</strong></div>
@@ -66,32 +66,38 @@
       </div>
     </div>
 
-    <!-- Keywords by Tier -->
+    <!-- Editable Keywords -->
     <div class="card">
       <div class="card-header"><strong>Search Keywords</strong></div>
       <div class="card-body">
-        {% if keywords %}
-          {% for tier_data in keywords %}
+        <p class="small text-muted mb-3">
+          Edit keywords used when searching for grant opportunities. One keyword per line.
+          Changes take effect immediately — no restart required.
+        </p>
+        <form method="POST" action="{{ url_for('settings.update_keywords') }}">
           <div class="mb-3">
-            <h6>
-              {% if tier_data.tier == 1 %}
-                <span class="badge bg-success">Tier 1 — Primary</span>
-              {% elif tier_data.tier == 2 %}
-                <span class="badge bg-warning text-dark">Tier 2 — Secondary</span>
-              {% else %}
-                <span class="badge bg-secondary">Tier {{ tier_data.tier }} — Exploratory</span>
-              {% endif %}
-            </h6>
-            <div>
-              {% for kw in tier_data.terms %}
-                <span class="badge bg-light text-dark border me-1 mb-1">{{ kw }}</span>
-              {% endfor %}
-            </div>
+            <label class="form-label fw-semibold">
+              <span class="badge bg-success me-1">Tier 1</span> Primary (mission-specific)
+            </label>
+            <textarea name="tier1_keywords" class="form-control font-monospace" rows="8"
+              placeholder="One keyword per line…">{{ (keywords.tier1 or []) | join('\n') }}</textarea>
           </div>
-          {% endfor %}
-        {% else %}
-          <p class="text-muted mb-0">No keywords configured.</p>
-        {% endif %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <span class="badge bg-warning text-dark me-1">Tier 2</span> Secondary (secular language)
+            </label>
+            <textarea name="tier2_keywords" class="form-control font-monospace" rows="8"
+              placeholder="One keyword per line…">{{ (keywords.tier2 or []) | join('\n') }}</textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <span class="badge bg-secondary me-1">Tier 3</span> Exploratory (broad net)
+            </label>
+            <textarea name="tier3_keywords" class="form-control font-monospace" rows="6"
+              placeholder="One keyword per line…">{{ (keywords.tier3 or []) | join('\n') }}</textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Keywords</button>
+        </form>
       </div>
     </div>
   </div>
@@ -120,11 +126,11 @@
       <div class="card-header"><strong>Configuration</strong></div>
       <div class="card-body">
         <p class="small text-muted mb-2">
-          Organization settings are loaded from <code>config/org_profile.yaml</code>.
-          To update these values, edit the config file and restart the dashboard.
+          Organization profile is loaded from <code>config/org_profile.yaml</code>.
+          To update org details, edit the YAML file and restart the dashboard.
         </p>
         <p class="small text-muted mb-0">
-          Search keywords are defined in <code>config/org_profile.yaml</code> under the <code>keywords</code> section.
+          Keyword edits are persisted to the database and override the YAML defaults.
         </p>
       </div>
     </div>

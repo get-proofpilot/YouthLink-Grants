@@ -424,6 +424,39 @@ class TestDashboardRoutes:
         assert resp.status_code == 200
         assert b"Youth Link" in resp.data
 
+    def test_settings_shows_keyword_textareas(self, authed_client):
+        resp = authed_client.get("/settings/")
+        assert b"tier1_keywords" in resp.data
+        assert b"tier2_keywords" in resp.data
+        assert b"tier3_keywords" in resp.data
+
+    def test_update_keywords_persists(self, authed_client, app):
+        resp = authed_client.post(
+            "/settings/keywords",
+            data={
+                "tier1_keywords": "pastoral development\nclergy coaching",
+                "tier2_keywords": "nonprofit capacity building",
+                "tier3_keywords": "youth development training",
+            },
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        assert b"Keywords saved" in resp.data
+
+        # In-memory config should reflect the new keywords
+        config = app.config["GRANT_CONFIG"]
+        assert "pastoral development" in config.keywords["tier1"]
+        assert "clergy coaching" in config.keywords["tier1"]
+        assert config.keywords["tier2"] == ["nonprofit capacity building"]
+
+    def test_update_keywords_requires_login(self, client):
+        resp = client.post(
+            "/settings/keywords",
+            data={"tier1_keywords": "test", "tier2_keywords": "", "tier3_keywords": ""},
+        )
+        # Should redirect to login
+        assert resp.status_code in (302, 401)
+
 
 # ---------------------------------------------------------------------------
 # Pipeline & Draft Status Tests

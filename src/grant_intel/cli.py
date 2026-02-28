@@ -513,6 +513,85 @@ def loi(ctx, foundation_id, guidelines_file, guidelines_url, amount, project, ou
     click.echo("\nReview items marked with [BRACKETS] and fill in org-specific data.")
 
 
+@cli.command("seed-foundations")
+@click.pass_context
+def seed_foundations(ctx):
+    """Seed curated, pre-vetted foundations into the database."""
+    from grant_intel.sources.curated import seed_curated_foundations
+
+    conn = get_connection(ctx.obj["db_path"])
+    init_db(conn)
+
+    click.echo("Seeding curated foundations...")
+    new_count = seed_curated_foundations(conn)
+    conn.close()
+    click.echo(f"Seeded {new_count} new foundations.")
+
+
+@cli.command("enrich")
+@click.pass_context
+def enrich(ctx):
+    """Enrich foundations with financial data from GivingTuesday 990 API."""
+    from grant_intel.sources.givingtuesday import enrich_all_foundations
+
+    conn = get_connection(ctx.obj["db_path"])
+    init_db(conn)
+
+    click.echo("Enriching foundations via GivingTuesday 990 API...")
+    stats = enrich_all_foundations(conn)
+    conn.close()
+    click.echo(f"Enriched: {stats['enriched']}, Skipped: {stats['skipped']}, Failed: {stats['failed']}")
+
+
+@cli.command("brave-search")
+@click.option("--query", "custom_query", default=None, help="Run a single custom search query")
+@click.pass_context
+def brave_search(ctx, custom_query):
+    """Discover grant opportunities via Brave Search API."""
+    from grant_intel.config import BRAVE_SEARCH_QUERIES
+    from grant_intel.sources.brave_search import discover_web_opportunities
+
+    config = ctx.obj["config"]
+    conn = get_connection(ctx.obj["db_path"])
+    init_db(conn)
+
+    if not config.brave_api_key:
+        click.echo("Error: BRAVE_API_KEY not set. Add it to .env file.", err=True)
+        conn.close()
+        return
+
+    queries = [custom_query] if custom_query else BRAVE_SEARCH_QUERIES
+    click.echo(f"Running {len(queries)} Brave Search queries...")
+    stats = discover_web_opportunities(queries, conn, config.brave_api_key)
+    conn.close()
+    click.echo(
+        f"Queries: {stats['queries_run']}, Results: {stats['results_total']}, "
+        f"Grant-like: {stats['grant_results']}, New saved: {stats['saved_new']}"
+    )
+
+
+@cli.command("import-grants")
+@click.argument("csv_path", type=click.Path(exists=True))
+@click.option("--no-filter", is_flag=True, help="Import all grants without relevance filtering")
+@click.pass_context
+def import_grants(ctx, csv_path, no_filter):
+    """Import historical grant data from NODC CSV file."""
+    from grant_intel.sources.nodc_import import import_nodc_grants
+
+    conn = get_connection(ctx.obj["db_path"])
+    init_db(conn)
+
+    click.echo(f"Importing grants from {csv_path}...")
+    stats = import_nodc_grants(csv_path, conn, filter_relevant=not no_filter)
+    conn.close()
+    click.echo(
+        f"Total rows: {stats['total_rows']}, Imported: {stats['imported']}, "
+        f"Filtered: {stats['filtered_out']}, Foundations discovered: {stats['foundations_discovered']}"
+    )
+    if stats.get("errors"):
+        click.echo(f"Errors: {stats['errors']}", err=True)
+
+
 @cli.command()
 @click.option("--host", default="0.0.0.0", help="Host to bind to")
 @click.option("--port", default=5000, type=int, help="Port to listen on")

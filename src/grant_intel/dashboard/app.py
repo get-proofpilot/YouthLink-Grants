@@ -133,7 +133,25 @@ def _run_data_pipeline(config, db_path: str):
     except Exception:
         logger.exception("Pipeline: foundation search failed")
 
-    # Step 4: Rule-score all opportunities (instant, free — AI runs on weekly schedule only)
+    # Step 4: Seed curated foundations
+    logger.info("Pipeline: seeding curated foundations...")
+    try:
+        from grant_intel.sources.curated import seed_curated_foundations
+        new_curated = seed_curated_foundations(conn)
+        logger.info("Pipeline: seeded %d new curated foundations", new_curated)
+    except Exception:
+        logger.exception("Pipeline: curated foundation seeding failed")
+
+    # Step 5: Enrich foundations via GivingTuesday 990 API
+    logger.info("Pipeline: enriching foundations via GivingTuesday 990 API...")
+    try:
+        from grant_intel.sources.givingtuesday import enrich_all_foundations
+        enrich_stats = enrich_all_foundations(conn)
+        logger.info("Pipeline: enriched %d foundations", enrich_stats.get("enriched", 0))
+    except Exception:
+        logger.exception("Pipeline: foundation enrichment failed")
+
+    # Step 6: Rule-score all opportunities (instant, free — AI runs on weekly schedule only)
     logger.info("Pipeline: running rule-based scoring (rules only, no AI)...")
     try:
         from grant_intel.scoring.matcher import score_with_funnel

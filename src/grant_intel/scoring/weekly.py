@@ -58,11 +58,11 @@ def _check_cooldown(conn, force: bool = False) -> tuple[bool, str]:
 
 
 def _refresh_data(config, conn) -> dict:
-    """Search Grants.gov + research foundations for new data."""
+    """Search Grants.gov + research foundations + enrich + Brave Search."""
     from grant_intel.sources.grants_gov import discover_grants
     from grant_intel.sources.propublica import research_similar_orgs, search_foundations_by_keyword
 
-    stats = {"new_opps": 0, "new_foundations": 0}
+    stats = {"new_opps": 0, "new_foundations": 0, "enriched": 0, "web_opps": 0}
 
     # Search Grants.gov
     logger.info("Weekly: searching Grants.gov...")
@@ -94,6 +94,37 @@ def _refresh_data(config, conn) -> dict:
         logger.info("Weekly: found %d foundations (%d new)", len(foundations), stats["new_foundations"])
     except Exception:
         logger.exception("Weekly: foundation search failed")
+
+    # Seed curated foundations
+    try:
+        from grant_intel.sources.curated import seed_curated_foundations
+        new_curated = seed_curated_foundations(conn)
+        stats["new_foundations"] += new_curated
+        logger.info("Weekly: seeded %d new curated foundations", new_curated)
+    except Exception:
+        logger.exception("Weekly: curated foundation seeding failed")
+
+    # Enrich foundations via GivingTuesday 990 API
+    try:
+        from grant_intel.sources.givingtuesday import enrich_all_foundations
+        enrich_stats = enrich_all_foundations(conn)
+        stats["enriched"] = enrich_stats.get("enriched", 0)
+        logger.info("Weekly: enriched %d foundations", stats["enriched"])
+    except Exception:
+        logger.exception("Weekly: foundation enrichment failed")
+
+    # Brave Search for web opportunities (only if API key is set)
+    if config.brave_api_key:
+        try:
+            from grant_intel.config import BRAVE_SEARCH_QUERIES
+            from grant_intel.sources.brave_search import discover_web_opportunities
+            brave_stats = discover_web_opportunities(BRAVE_SEARCH_QUERIES, conn, config.brave_api_key)
+            stats["web_opps"] = brave_stats.get("saved_new", 0)
+            logger.info("Weekly: discovered %d new web opportunities", stats["web_opps"])
+        except Exception:
+            logger.exception("Weekly: Brave Search failed")
+    else:
+        logger.info("Weekly: skipping Brave Search (BRAVE_API_KEY not set)")
 
     return stats
 

@@ -125,11 +125,31 @@ CREATE TABLE IF NOT EXISTS grant_drafts (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS web_opportunities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    funder_name TEXT,
+    foundation_id INTEGER REFERENCES foundations(id),
+    url TEXT UNIQUE,
+    description TEXT,
+    deadline TEXT,
+    award_min INTEGER,
+    award_max INTEGER,
+    eligibility TEXT,
+    source TEXT DEFAULT 'brave_search',
+    search_query TEXT,
+    discovered_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT,
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fg_unique
+ON foundation_grants(foundation_ein, recipient_ein, amount, tax_year);
 """
 
 
@@ -149,6 +169,8 @@ def init_db(conn: sqlite3.Connection):
     conn.commit()
     _migrate_rule_score(conn)
     _migrate_cfda_codes(conn)
+    _migrate_foundation_enrichment(conn)
+    _migrate_web_opportunity_scores(conn)
     logger.info("Database initialized")
 
 
@@ -183,6 +205,38 @@ def _migrate_cfda_codes(conn: sqlite3.Connection):
                 pass
         conn.commit()
         logger.info("Migrated: added cfda_codes column and backfilled %d records", len(rows))
+
+
+def _migrate_foundation_enrichment(conn: sqlite3.Connection):
+    """Add enrichment columns to foundations table if missing."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(foundations)").fetchall()}
+    added = []
+    if "revenue" not in cols:
+        conn.execute("ALTER TABLE foundations ADD COLUMN revenue INTEGER")
+        added.append("revenue")
+    if "ntee_code" not in cols:
+        conn.execute("ALTER TABLE foundations ADD COLUMN ntee_code TEXT")
+        added.append("ntee_code")
+    if "accepts_applications" not in cols:
+        conn.execute("ALTER TABLE foundations ADD COLUMN accepts_applications INTEGER")
+        added.append("accepts_applications")
+    if "last_enriched" not in cols:
+        conn.execute("ALTER TABLE foundations ADD COLUMN last_enriched TEXT")
+        added.append("last_enriched")
+    if added:
+        conn.commit()
+        logger.info("Migrated: added foundation enrichment columns: %s", ", ".join(added))
+
+
+def _migrate_web_opportunity_scores(conn: sqlite3.Connection):
+    """Add web_opportunity_id column to scores table if missing."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(scores)").fetchall()}
+    if "web_opportunity_id" not in cols:
+        conn.execute(
+            "ALTER TABLE scores ADD COLUMN web_opportunity_id INTEGER REFERENCES web_opportunities(id)"
+        )
+        conn.commit()
+        logger.info("Migrated: added web_opportunity_id to scores")
 
 
 def upsert_opportunity(conn: sqlite3.Connection, opp: dict) -> bool:
@@ -792,3 +846,102 @@ def get_dashboard_stats(conn: sqlite3.Connection) -> dict:
     base["deadlines_60"] = upcoming_60
 
     return base
+
+
+# ---------------------------------------------------------------------------
+# Web opportunities + foundation enrichment CRUD
+# ---------------------------------------------------------------------------
+
+
+def upsert_web_opportunity(conn: sqlite3.Connection, opp: dict) -> bool:
+    """Insert or update a web opportunity. Returns True if new."""
+    try:
+        conn.execute(
+            """INSERT INTO web_opportunities
+            (title, funder_name, foundation_id, url, description, deadline,
+             award_min, award_max, eligibility, source, search_query)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                opp.get("title", ""),
+                opp.get("funder_name", ""),
+                opp.get("foundation_id"),
+                opp.get("url", ""),
+                opp.get("description", ""),
+                opp.get("deadline", ""),
+                opp.get("award_min"),
+                opp.get("award_max"),
+                opp.get("eligibility", ""),
+                opp.get("source", "brave_search"),
+                opp.get("search_query", ""),
+            ),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        conn.execute(
+            """UPDATE web_opportunities SET
+            title=?, funder_name=?, description=?, deadline=?,
+            updated_at=datetime('now')
+            WHERE url=?""",
+            (
+                opp.get("title", ""),
+                opp.get("funder_name", ""),
+                opp.get("description", ""),
+                opp.get("deadline", ""),
+                opp.get("url", ""),
+            ),
+        )
+        conn.commit()
+        return False
+
+
+def get_unscored_web_opportunities(conn: sqlite3.Connection) -> list[dict]:
+    """Get web opportunities that haven't been scored yet."""
+    rows = conn.execute(
+        """SELECT wo.* FROM web_opportunities wo
+        LEFT JOIN scores s ON s.web_opportunity_id = wo.id
+        WHERE s.id IS NULL
+        ORDER BY wo.discovered_at DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_foundation_enrichment(conn: sqlite3.Connection, ein: str, data: dict):
+    """Update enrichment data for a foundation by EIN."""
+    conn.execute(
+        """UPDATE foundations SET
+        total_assets=COALESCE(?, total_assets),
+        total_giving=COALESCE(?, total_giving),
+        revenue=COALESCE(?, revenue),
+        ntee_code=COALESCE(?, ntee_code),
+        last_enriched=datetime('now'),
+        updated_at=datetime('now')
+        WHERE ein=?""",
+        (
+            data.get("total_assets"),
+            data.get("total_giving"),
+            data.get("revenue"),
+            data.get("ntee_code"),
+            ein,
+        ),
+    )
+    conn.commit()
+
+
+def get_foundations_needing_enrichment(conn: sqlite3.Connection) -> list[dict]:
+    """Get foundations that haven't been enriched or were enriched > 30 days ago."""
+    rows = conn.execute(
+        """SELECT * FROM foundations
+        WHERE last_enriched IS NULL
+        OR date(last_enriched) < date('now', '-30 days')
+        ORDER BY total_giving DESC NULLS LAST"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_foundation_by_ein(conn: sqlite3.Connection, ein: str) -> dict | None:
+    """Get a single foundation by EIN."""
+    row = conn.execute(
+        "SELECT * FROM foundations WHERE ein = ?", (ein,)
+    ).fetchone()
+    return dict(row) if row else None

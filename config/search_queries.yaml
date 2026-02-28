@@ -1,0 +1,45 @@
+# ProPublica keyword searches for discovering foundation prospects
+foundation_search_keywords:
+  - youth ministry foundation
+  - christian leadership grant
+  - pastoral development
+  - church leadership
+  - clergy support
+  - ministry coaching
+  - lilly endowment
+  - chatlos foundation
+  - stewardship foundation
+  - maclellan foundation
+  - leadership development nonprofit
+  - youth worker training
+  - nonprofit capacity building
+  - faith community
+  - spiritual development
+
+# Brave Search queries for active grant opportunity discovery
+# Each query targets specific funders or grant opportunities discoverable via web search.
+# Add/remove queries here without a code change or redeployment.
+brave_search_queries:
+  # Specific known funders
+  - '"lilly endowment" clergy renewal grant application 2026'
+  - '"chatlos foundation" grant application religious'
+  - '"kern family foundation" pastoral leadership grant'
+  - '"crowell trust" christian ministry grant application'
+  - '"stewardship foundation" youth ministry grant'
+  # Arizona community foundations
+  - 'site:azfoundation.org grants faith youth ministry'
+  - 'Arizona community foundation grants "faith-based" 2026'
+  # Broad faith-based
+  - 'christian foundation grants "youth ministry" apply 2026'
+  - 'faith-based grants "pastoral development" application'
+  - '"clergy support" grant application 2026'
+  - 'foundation grants "church leadership" development'
+  - '"ministry coaching" grant funding application'
+  # Denominational
+  - 'denomination grant "youth ministry" application 2026'
+  - 'evangelical grant "leadership development" application'
+  # Capacity building
+  - '"nonprofit capacity building" faith-based grant 2026'
+  - '"youth worker" training grant application'
+  - '"spiritual development" youth grant funding'
+  - 'christian nonprofit grant "capacity building" 2026'

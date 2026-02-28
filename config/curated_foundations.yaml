@@ -1,0 +1,121 @@
+foundations:
+  - name: "Lilly Endowment Inc."
+    ein: "350868122"
+    city: Indianapolis
+    state: IN
+    website: "https://lillyendowment.org"
+    focus_areas:
+      - clergy renewal
+      - pastoral leadership
+      - theological education
+    accepts_applications: true
+    source: curated
+
+  - name: "National Christian Foundation"
+    ein: "581493949"
+    city: Alpharetta
+    state: GA
+    website: "https://www.ncfgiving.com"
+    focus_areas:
+      - christian ministry
+      - donor-advised funds
+      - church support
+    accepts_applications: true
+    source: curated
+
+  - name: "The Chatlos Foundation Inc."
+    ein: "136161425"
+    city: Longwood
+    state: FL
+    website: "https://www.chatlos.org"
+    focus_areas:
+      - bible colleges
+      - religious causes
+      - higher education
+    accepts_applications: true
+    source: curated
+
+  - name: "Stewardship Foundation"
+    ein: "910900291"
+    city: Tacoma
+    state: WA
+    website: "https://www.stewardshipfdn.org"
+    focus_areas:
+      - christian leadership
+      - youth development
+      - education
+    accepts_applications: true
+    source: curated
+
+  - name: "MacLellan Foundation Inc."
+    ein: "626041468"
+    city: Chattanooga
+    state: TN
+    website: "https://www.maclellan.net"
+    focus_areas:
+      - world evangelism
+      - christian education
+      - discipleship
+    accepts_applications: false
+    source: curated
+
+  - name: "Crowell Trust"
+    ein: "956038007"
+    city: Sierra Madre
+    state: CA
+    website: "https://www.crowelltrust.org"
+    focus_areas:
+      - evangelical christianity
+      - christian education
+      - church ministry
+    accepts_applications: true
+    source: curated
+
+  - name: "M.J. Murdock Charitable Trust"
+    ein: "237456468"
+    city: Vancouver
+    state: WA
+    website: "https://murdocktrust.org"
+    focus_areas:
+      - education
+      - scientific research
+      - religion
+      - arts
+    accepts_applications: true
+    source: curated
+
+  - name: "Kern Family Foundation"
+    ein: "391905498"
+    city: Waukesha
+    state: WI
+    website: "https://www.kfrn.org"
+    focus_areas:
+      - character education
+      - faith and work
+      - pastoral leadership
+    accepts_applications: true
+    source: curated
+
+  - name: "Koch Foundation Inc."
+    ein: "591885997"
+    city: Gainesville
+    state: FL
+    website: "https://www.kochfoundation.org"
+    focus_areas:
+      - catholic education
+      - evangelization
+      - religious formation
+    accepts_applications: true
+    source: curated
+
+  - name: "Templeton Religion Trust"
+    ein: "464649055"
+    city: Nassau
+    state: BS
+    website: "https://www.templetonreligiontrust.org"
+    focus_areas:
+      - religious scholarship
+      - science and religion
+      - character virtue
+    accepts_applications: true
+    source: curated

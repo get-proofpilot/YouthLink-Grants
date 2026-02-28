@@ -96,157 +96,31 @@ def load_config(
     )
 
 
-# Expanded foundation search keywords — used by CLI, dashboard, and weekly agent
-FOUNDATION_SEARCH_KEYWORDS = [
-    # Mission-specific
-    "youth ministry foundation",
-    "christian leadership grant",
-    "pastoral development",
-    "church leadership",
-    "clergy support",
-    "ministry coaching",
-    # Known funders of this work (search by name to find related foundations)
-    "lilly endowment",
-    "chatlos foundation",
-    "stewardship foundation",
-    "maclellan foundation",
-    # Broader secular terms that catch relevant foundations
-    "leadership development nonprofit",
-    "youth worker training",
-    "nonprofit capacity building",
-    "faith community",
-    "spiritual development",
-]
+def _load_search_queries(path: str = "config/search_queries.yaml") -> tuple[list[str], list[str]]:
+    """Load foundation search keywords and Brave search queries from YAML."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return (
+            data.get("foundation_search_keywords", []),
+            data.get("brave_search_queries", []),
+        )
+    except FileNotFoundError:
+        return [], []
 
 
-# Pre-vetted Christian foundations with known giving in pastoral/youth/ministry space
-CURATED_FOUNDATIONS = [
-    {
-        "name": "Lilly Endowment Inc.",
-        "ein": "350868122",
-        "city": "Indianapolis",
-        "state": "IN",
-        "website": "https://lillyendowment.org",
-        "focus_areas": ["clergy renewal", "pastoral leadership", "theological education"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "National Christian Foundation",
-        "ein": "581493949",
-        "city": "Alpharetta",
-        "state": "GA",
-        "website": "https://www.ncfgiving.com",
-        "focus_areas": ["christian ministry", "donor-advised funds", "church support"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "The Chatlos Foundation Inc.",
-        "ein": "136161425",
-        "city": "Longwood",
-        "state": "FL",
-        "website": "https://www.chatlos.org",
-        "focus_areas": ["bible colleges", "religious causes", "higher education"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "Stewardship Foundation",
-        "ein": "910900291",
-        "city": "Tacoma",
-        "state": "WA",
-        "website": "https://www.stewardshipfdn.org",
-        "focus_areas": ["christian leadership", "youth development", "education"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "MacLellan Foundation Inc.",
-        "ein": "626041468",
-        "city": "Chattanooga",
-        "state": "TN",
-        "website": "https://www.maclellan.net",
-        "focus_areas": ["world evangelism", "christian education", "discipleship"],
-        "accepts_applications": False,
-        "source": "curated",
-    },
-    {
-        "name": "Crowell Trust",
-        "ein": "956038007",
-        "city": "Sierra Madre",
-        "state": "CA",
-        "website": "https://www.crowelltrust.org",
-        "focus_areas": ["evangelical christianity", "christian education", "church ministry"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "M.J. Murdock Charitable Trust",
-        "ein": "237456468",
-        "city": "Vancouver",
-        "state": "WA",
-        "website": "https://murdocktrust.org",
-        "focus_areas": ["education", "scientific research", "religion", "arts"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "Kern Family Foundation",
-        "ein": "391905498",
-        "city": "Waukesha",
-        "state": "WI",
-        "website": "https://www.kfrn.org",
-        "focus_areas": ["character education", "faith and work", "pastoral leadership"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "Koch Foundation Inc.",
-        "ein": "591885997",
-        "city": "Gainesville",
-        "state": "FL",
-        "website": "https://www.kochfoundation.org",
-        "focus_areas": ["catholic education", "evangelization", "religious formation"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-    {
-        "name": "Templeton Religion Trust",
-        "ein": "464649055",
-        "city": "Nassau",
-        "state": "BS",
-        "website": "https://www.templetonreligiontrust.org",
-        "focus_areas": ["religious scholarship", "science and religion", "character virtue"],
-        "accepts_applications": True,
-        "source": "curated",
-    },
-]
+def _load_curated_foundations(path: str = "config/curated_foundations.yaml") -> list[dict]:
+    """Load curated foundations list from YAML."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("foundations", [])
+    except FileNotFoundError:
+        return []
 
 
-# Brave Search API queries for active grant discovery
-BRAVE_SEARCH_QUERIES = [
-    # Specific known funders
-    '"lilly endowment" clergy renewal grant application 2026',
-    '"chatlos foundation" grant application religious',
-    '"kern family foundation" pastoral leadership grant',
-    '"crowell trust" christian ministry grant application',
-    '"stewardship foundation" youth ministry grant',
-    # Arizona community foundations
-    'site:azfoundation.org grants faith youth ministry',
-    'Arizona community foundation grants "faith-based" 2026',
-    # Broad faith-based
-    'christian foundation grants "youth ministry" apply 2026',
-    'faith-based grants "pastoral development" application',
-    '"clergy support" grant application 2026',
-    'foundation grants "church leadership" development',
-    '"ministry coaching" grant funding application',
-    # Denominational
-    'denomination grant "youth ministry" application 2026',
-    'evangelical grant "leadership development" application',
-    # Capacity building
-    '"nonprofit capacity building" faith-based grant 2026',
-    '"youth worker" training grant application',
-    '"spiritual development" youth grant funding',
-    'christian nonprofit grant "capacity building" 2026',
-]
+# Module-level constants loaded from YAML — importable by CLI, dashboard, weekly agent.
+# Edit config/search_queries.yaml or config/curated_foundations.yaml to add/remove
+# entries without a code change or redeployment.
+FOUNDATION_SEARCH_KEYWORDS, BRAVE_SEARCH_QUERIES = _load_search_queries()
+CURATED_FOUNDATIONS = _load_curated_foundations()

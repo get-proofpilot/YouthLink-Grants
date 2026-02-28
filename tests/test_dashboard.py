@@ -168,9 +168,10 @@ def seeded_db(db_path):
 @pytest.fixture
 def app(seeded_db):
     """Flask test application."""
+    from werkzeug.security import generate_password_hash
     os.environ["DASHBOARD_USERNAME"] = "admin"
-    os.environ["DASHBOARD_PASSWORD"] = "testpass"
-    os.environ["SECRET_KEY"] = "test-secret-key"
+    os.environ["DASHBOARD_PASSWORD_HASH"] = generate_password_hash("testpass")
+    os.environ["SECRET_KEY"] = "test-secret-key-not-default"
 
     application = create_app(
         config_path="config/org_profile.yaml",

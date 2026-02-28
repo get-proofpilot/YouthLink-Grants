@@ -26,7 +26,13 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
         static_folder=str(_STATIC_DIR),
     )
 
-    app.secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
+    secret_key = os.getenv("SECRET_KEY", "")
+    if not secret_key or secret_key == "change-me-in-production":
+        raise RuntimeError(
+            "SECRET_KEY env var is not set or uses the insecure default. "
+            "Set a random value: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    app.secret_key = secret_key
     app.config["DB_PATH"] = db_path
     app.config["CONFIG_PATH"] = config_path
 
@@ -80,6 +86,14 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
     # Register Jinja2 filters
     from grant_intel.dashboard.filters import register_filters
     register_filters(app)
+
+    # Security headers
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
     # Context processor for org name in nav
     @app.context_processor
@@ -155,12 +169,12 @@ def _run_data_pipeline(config, db_path: str):
 
     # Step 6: Rule-score all opportunities (instant, free — AI runs on weekly schedule only)
     logger.info("Pipeline: running rule-based scoring (rules only, no AI)...")
+    score_conn = get_connection(db_path)
     try:
         from grant_intel.scoring.matcher import score_with_funnel
 
-        conn = get_connection(db_path)
         summary = score_with_funnel(
-            conn=conn,
+            conn=score_conn,
             org=config.org,
             api_key=None,
             ai_threshold=6,
@@ -172,6 +186,8 @@ def _run_data_pipeline(config, db_path: str):
         )
     except Exception:
         logger.exception("Pipeline: scoring failed")
+    finally:
+        score_conn.close()
 
     conn.close()
     logger.info("Pipeline: data population complete")

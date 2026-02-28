@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS scores (
     explanation TEXT,
     urgency TEXT,
     model_used TEXT,
-    scored_at TEXT DEFAULT (datetime('now'))
+    scored_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(opportunity_id, foundation_id)
 );
 
 CREATE TABLE IF NOT EXISTS pipeline (
@@ -171,6 +172,7 @@ def init_db(conn: sqlite3.Connection):
     _migrate_cfda_codes(conn)
     _migrate_foundation_enrichment(conn)
     _migrate_web_opportunity_scores(conn)
+    _migrate_scores_uniqueness(conn)
     logger.info("Database initialized")
 
 
@@ -237,6 +239,27 @@ def _migrate_web_opportunity_scores(conn: sqlite3.Connection):
         )
         conn.commit()
         logger.info("Migrated: added web_opportunity_id to scores")
+
+
+def _migrate_scores_uniqueness(conn: sqlite3.Connection):
+    """Deduplicate scores and add unique index on (opportunity_id, foundation_id)."""
+    indexes = {row[1] for row in conn.execute("PRAGMA index_list(scores)").fetchall()}
+    if "idx_scores_unique_pair" not in indexes:
+        # Remove duplicate rows, keeping only the latest scored_at per pair
+        conn.execute("""
+            DELETE FROM scores
+            WHERE id NOT IN (
+                SELECT MAX(id)
+                FROM scores
+                GROUP BY opportunity_id, foundation_id
+            )
+        """)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_scores_unique_pair "
+            "ON scores(opportunity_id, foundation_id)"
+        )
+        conn.commit()
+        logger.info("Migrated: deduped scores and added unique index on (opportunity_id, foundation_id)")
 
 
 def upsert_opportunity(conn: sqlite3.Connection, opp: dict) -> bool:
@@ -386,11 +409,17 @@ def upsert_similar_org(conn: sqlite3.Connection, org: dict) -> bool:
 
 
 def insert_score(conn: sqlite3.Connection, score: dict):
-    """Insert a match score."""
+    """Insert or replace a match score (upsert by opportunity+foundation pair)."""
     conn.execute(
         """INSERT INTO scores
         (opportunity_id, foundation_id, score, explanation, urgency, model_used)
-        VALUES (?, ?, ?, ?, ?, ?)""",
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(opportunity_id, foundation_id) DO UPDATE SET
+            score=excluded.score,
+            explanation=excluded.explanation,
+            urgency=excluded.urgency,
+            model_used=excluded.model_used,
+            scored_at=datetime('now')""",
         (
             score.get("opportunity_id"),
             score.get("foundation_id"),

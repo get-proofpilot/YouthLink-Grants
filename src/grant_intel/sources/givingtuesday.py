@@ -70,10 +70,11 @@ def enrich_foundation(ein: str, name: str = "") -> dict:
             reverse=True,
         )
         latest = sorted_filings[0]
-        # totfuncexpns = total functional expenses (closest to "total giving" for foundations)
-        total_expenses = latest.get("totfuncexpns")
-        if total_expenses:
-            result["total_giving"] = int(total_expenses)
+        # totgrantspd = grants paid (accurate for 990-PF private foundations)
+        # Fall back to totfuncexpns only if grants paid is unavailable
+        grants_paid = latest.get("totgrantspd") or latest.get("totfuncexpns")
+        if grants_paid:
+            result["total_giving"] = int(grants_paid)
         # If we got assets from filing but not from org summary, use filing data
         if "total_assets" not in result and latest.get("totassetsend"):
             result["total_assets"] = int(latest["totassetsend"])

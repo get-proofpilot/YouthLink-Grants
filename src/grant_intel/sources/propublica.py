@@ -78,7 +78,7 @@ def extract_org_info(data: dict) -> dict:
         "city": org.get("city", ""),
         "state": org.get("state", ""),
         "total_revenue": org.get("income_amount"),
-        "total_expenses": org.get("asset_amount"),
+        "total_assets": org.get("asset_amount"),
         "ntee_code": org.get("ntee_code", ""),
         "mission": org.get("subsection_code", ""),
         "source": "propublica",

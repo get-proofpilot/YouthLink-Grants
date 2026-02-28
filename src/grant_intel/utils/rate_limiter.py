@@ -1,6 +1,7 @@
 """Rate limiting and retry logic for API calls."""
 
 import logging
+import threading
 import time
 
 import requests
@@ -9,19 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
-    """Simple rate limiter using token bucket."""
+    """Thread-safe rate limiter using a lock to prevent concurrent bursts."""
 
     def __init__(self, calls_per_second: float = 1.0):
         self.min_interval = 1.0 / calls_per_second
         self.last_call = 0.0
+        self._lock = threading.Lock()
 
     def wait(self):
         """Block until enough time has passed since the last call."""
-        now = time.monotonic()
-        elapsed = now - self.last_call
-        if elapsed < self.min_interval:
-            time.sleep(self.min_interval - elapsed)
-        self.last_call = time.monotonic()
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self.last_call
+            if elapsed < self.min_interval:
+                time.sleep(self.min_interval - elapsed)
+            self.last_call = time.monotonic()
 
 
 def request_with_retry(

@@ -36,12 +36,13 @@ def verify_credentials(username: str, password: str) -> bool:
     expected_user = os.getenv("DASHBOARD_USERNAME", "admin")
     password_hash = os.getenv("DASHBOARD_PASSWORD_HASH", "")
 
-    if password_hash:
-        return username == expected_user and check_password_hash(password_hash, password)
+    if not password_hash:
+        raise RuntimeError(
+            "DASHBOARD_PASSWORD_HASH is not set. "
+            "Generate one with: python -c \"from grant_intel.dashboard.auth import hash_password; print(hash_password('yourpassword'))\""
+        )
 
-    # Fallback: plain password from env (for initial setup)
-    plain_pass = os.getenv("DASHBOARD_PASSWORD", "changeme")
-    return username == expected_user and password == plain_pass
+    return username == expected_user and check_password_hash(password_hash, password)
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -53,6 +54,9 @@ def login():
         if verify_credentials(username, password):
             login_user(AdminUser())
             next_page = request.args.get("next")
+            # Validate next_page is a relative URL to prevent open redirect
+            if next_page and (not next_page.startswith("/") or next_page.startswith("//")):
+                next_page = None
             return redirect(next_page or url_for("main.home"))
 
         flash("Invalid username or password.", "danger")

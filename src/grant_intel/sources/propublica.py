@@ -29,6 +29,9 @@ def search_orgs(query: str, state: str = "") -> list[dict]:
             rate_limiter=_rate_limiter,
             params=params,
         )
+        # ProPublica returns 404 when no results match a state-filtered query
+        if response.status_code == 404:
+            break
         response.raise_for_status()
         data = response.json()
 

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import sqlite3
 from datetime import date, datetime
 
@@ -11,6 +12,16 @@ from grant_intel.config import OrgProfile
 from grant_intel.scoring.rules import score_all_opportunities
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_json_response(text: str) -> str:
+    """Strip markdown code fences from Claude's response before JSON parsing."""
+    text = text.strip()
+    # Remove ```json ... ``` or ``` ... ```
+    m = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```$", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return text
 
 SCORING_SYSTEM_PROMPT = """You are a grant analyst for {org_name}, a {tax_status} nonprofit in {city}, {state}.
 
@@ -143,7 +154,7 @@ def score_opportunities(
                 messages=[{"role": "user", "content": user_prompt}],
             )
 
-            response_text = response.content[0].text
+            response_text = _clean_json_response(response.content[0].text)
             scores = json.loads(response_text)
 
             for score_data in scores:
@@ -166,6 +177,9 @@ def score_opportunities(
                 min(i + batch_size, len(opportunities)),
                 len(scores),
             )
+        except anthropic.AuthenticationError:
+            logger.error("Invalid API key — aborting scoring")
+            break
         except (json.JSONDecodeError, anthropic.APIError):
             logger.exception("Error scoring batch %d-%d", i + 1, i + batch_size)
 
@@ -263,7 +277,7 @@ def score_foundations(
                 messages=[{"role": "user", "content": user_prompt}],
             )
 
-            response_text = response.content[0].text
+            response_text = _clean_json_response(response.content[0].text)
             scores = json.loads(response_text)
 
             for score_data in scores:
@@ -277,6 +291,9 @@ def score_foundations(
                 })
 
             logger.info("Scored foundation batch %d-%d", i + 1, i + batch_size)
+        except anthropic.AuthenticationError:
+            logger.error("Invalid API key — aborting foundation scoring")
+            break
         except (json.JSONDecodeError, anthropic.APIError):
             logger.exception("Error scoring foundation batch %d-%d", i + 1, i + batch_size)
 

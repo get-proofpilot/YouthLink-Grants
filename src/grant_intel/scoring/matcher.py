@@ -146,42 +146,61 @@ def score_opportunities(
             items_json=json.dumps(items, indent=2),
         )
 
-        try:
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1024,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
+        messages = [{"role": "user", "content": user_prompt}]
+        for attempt in range(2):
+            try:
+                response = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=messages,
+                )
 
-            response_text = _clean_json_response(response.content[0].text)
-            scores = json.loads(response_text)
+                response_text = _clean_json_response(response.content[0].text)
+                scores = json.loads(response_text)
 
-            for score_data in scores:
-                opp_id = score_data.get("id")
-                matching_opp = next((o for o in batch if o["id"] == opp_id), None)
-                deadline = matching_opp.get("deadline", "") if matching_opp else ""
+                for score_data in scores:
+                    opp_id = score_data.get("id")
+                    matching_opp = next((o for o in batch if o["id"] == opp_id), None)
+                    deadline = matching_opp.get("deadline", "") if matching_opp else ""
 
-                all_scores.append({
-                    "opportunity_id": opp_id,
-                    "foundation_id": None,
-                    "score": min(10, max(1, int(score_data.get("score", 1)))),
-                    "explanation": score_data.get("explanation", ""),
-                    "urgency": score_data.get("urgency", _calculate_urgency(deadline)),
-                    "model_used": "claude-haiku-4-5-20251001",
-                })
+                    all_scores.append({
+                        "opportunity_id": opp_id,
+                        "foundation_id": None,
+                        "score": min(10, max(1, int(score_data.get("score", 1)))),
+                        "explanation": score_data.get("explanation", ""),
+                        "urgency": score_data.get("urgency", _calculate_urgency(deadline)),
+                        "model_used": "claude-haiku-4-5-20251001",
+                    })
 
-            logger.info(
-                "Scored batch %d-%d: %d scores",
-                i + 1,
-                min(i + batch_size, len(opportunities)),
-                len(scores),
-            )
-        except anthropic.AuthenticationError:
-            logger.error("Invalid API key — aborting scoring")
-            break
-        except (json.JSONDecodeError, anthropic.APIError):
-            logger.exception("Error scoring batch %d-%d", i + 1, i + batch_size)
+                logger.info(
+                    "Scored batch %d-%d: %d scores",
+                    i + 1,
+                    min(i + batch_size, len(opportunities)),
+                    len(scores),
+                )
+                break
+            except anthropic.AuthenticationError:
+                logger.error("Invalid API key — aborting scoring")
+                return all_scores
+            except json.JSONDecodeError:
+                if attempt == 0:
+                    logger.warning(
+                        "JSONDecodeError scoring batch %d-%d, retrying with JSON-only reminder",
+                        i + 1, i + batch_size,
+                    )
+                    messages = messages + [
+                        {"role": "assistant", "content": response.content[0].text},
+                        {"role": "user", "content": "Your response was not valid JSON. Reply with ONLY a JSON array, no markdown, no explanation."},
+                    ]
+                else:
+                    logger.error(
+                        "JSONDecodeError on retry — skipping batch %d-%d (%d items lost)",
+                        i + 1, i + batch_size, len(batch),
+                    )
+            except anthropic.APIError:
+                logger.exception("APIError scoring batch %d-%d", i + 1, i + batch_size)
+                break
 
     return all_scores
 
@@ -269,32 +288,51 @@ def score_foundations(
             items_json=json.dumps(items, indent=2),
         )
 
-        try:
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1024,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
+        messages = [{"role": "user", "content": user_prompt}]
+        for attempt in range(2):
+            try:
+                response = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=messages,
+                )
 
-            response_text = _clean_json_response(response.content[0].text)
-            scores = json.loads(response_text)
+                response_text = _clean_json_response(response.content[0].text)
+                scores = json.loads(response_text)
 
-            for score_data in scores:
-                all_scores.append({
-                    "opportunity_id": None,
-                    "foundation_id": score_data.get("id"),
-                    "score": min(10, max(1, int(score_data.get("score", 1)))),
-                    "explanation": score_data.get("explanation", ""),
-                    "urgency": "",
-                    "model_used": "claude-haiku-4-5-20251001",
-                })
+                for score_data in scores:
+                    all_scores.append({
+                        "opportunity_id": None,
+                        "foundation_id": score_data.get("id"),
+                        "score": min(10, max(1, int(score_data.get("score", 1)))),
+                        "explanation": score_data.get("explanation", ""),
+                        "urgency": "",
+                        "model_used": "claude-haiku-4-5-20251001",
+                    })
 
-            logger.info("Scored foundation batch %d-%d", i + 1, i + batch_size)
-        except anthropic.AuthenticationError:
-            logger.error("Invalid API key — aborting foundation scoring")
-            break
-        except (json.JSONDecodeError, anthropic.APIError):
-            logger.exception("Error scoring foundation batch %d-%d", i + 1, i + batch_size)
+                logger.info("Scored foundation batch %d-%d", i + 1, i + batch_size)
+                break
+            except anthropic.AuthenticationError:
+                logger.error("Invalid API key — aborting foundation scoring")
+                return all_scores
+            except json.JSONDecodeError:
+                if attempt == 0:
+                    logger.warning(
+                        "JSONDecodeError scoring foundation batch %d-%d, retrying with JSON-only reminder",
+                        i + 1, i + batch_size,
+                    )
+                    messages = messages + [
+                        {"role": "assistant", "content": response.content[0].text},
+                        {"role": "user", "content": "Your response was not valid JSON. Reply with ONLY a JSON array, no markdown, no explanation."},
+                    ]
+                else:
+                    logger.error(
+                        "JSONDecodeError on retry — skipping foundation batch %d-%d (%d items lost)",
+                        i + 1, i + batch_size, len(batch),
+                    )
+            except anthropic.APIError:
+                logger.exception("APIError scoring foundation batch %d-%d", i + 1, i + batch_size)
+                break
 
     return all_scores

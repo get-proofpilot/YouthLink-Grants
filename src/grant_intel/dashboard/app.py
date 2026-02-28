@@ -5,7 +5,7 @@ import os
 import threading
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, jsonify
 
 from grant_intel.config import load_config
 from grant_intel.db import get_connection, init_db
@@ -86,6 +86,43 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
     # Register Jinja2 filters
     from grant_intel.dashboard.filters import register_filters
     register_filters(app)
+
+    # Health endpoint — no auth required, safe for uptime monitors
+    @app.route("/health")
+    def health():
+        conn = get_connection(db_path)
+        try:
+            opp_count = conn.execute("SELECT COUNT(*) FROM opportunities").fetchone()[0]
+            foundation_count = conn.execute("SELECT COUNT(*) FROM foundations").fetchone()[0]
+            last_run = conn.execute(
+                "SELECT value FROM settings WHERE key = 'last_weekly_run'"
+            ).fetchone()
+            last_run_value = last_run[0] if last_run else None
+
+            status = "ok"
+            warnings = []
+            if last_run_value:
+                from datetime import datetime, timezone
+                try:
+                    last_dt = datetime.fromisoformat(last_run_value)
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    age_days = (datetime.now(timezone.utc) - last_dt).days
+                    if age_days > 8:
+                        status = "stale"
+                        warnings.append(f"Last weekly run was {age_days} days ago")
+                except ValueError:
+                    pass
+        finally:
+            conn.close()
+
+        return jsonify({
+            "status": status,
+            "opportunities": opp_count,
+            "foundations": foundation_count,
+            "last_weekly_run": last_run_value,
+            "warnings": warnings,
+        }), 200 if status == "ok" else 503
 
     # Security headers
     @app.after_request

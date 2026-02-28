@@ -490,7 +490,7 @@ def get_unscored_foundations(conn: sqlite3.Connection) -> list[dict]:
         """SELECT f.* FROM foundations f
         LEFT JOIN scores s ON s.foundation_id = f.id
         WHERE s.id IS NULL
-        ORDER BY f.total_giving DESC"""
+        ORDER BY f.total_giving DESC NULLS LAST, f.created_at DESC"""
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -539,7 +539,7 @@ def get_all_foundations(conn: sqlite3.Connection) -> list[dict]:
         """SELECT f.*, s.score, s.explanation
         FROM foundations f
         LEFT JOIN scores s ON s.foundation_id = f.id
-        ORDER BY s.score DESC NULLS LAST, f.total_giving DESC"""
+        ORDER BY s.score DESC NULLS LAST, f.total_giving DESC NULLS LAST, f.created_at DESC"""
     ).fetchall()
     return [dict(row) for row in rows]
 

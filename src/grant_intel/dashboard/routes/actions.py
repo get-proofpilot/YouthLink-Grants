@@ -10,9 +10,11 @@ from grant_intel.db import (
     get_connection,
     get_unscored_foundations,
     get_unscored_opportunities,
+    get_unscored_web_opportunities,
     init_db,
     insert_draft,
     insert_score,
+    insert_web_score,
     upsert_foundation,
     upsert_opportunity,
 )
@@ -58,10 +60,11 @@ def trigger_scoring():
 
     conn = get_connection(current_app.config["DB_PATH"])
     try:
-        from grant_intel.scoring.matcher import score_foundations, score_opportunities
+        from grant_intel.scoring.matcher import score_foundations, score_opportunities, score_web_opportunities
 
         unscored_opps = get_unscored_opportunities(conn)
         unscored_founds = get_unscored_foundations(conn)
+        unscored_web = get_unscored_web_opportunities(conn)
 
         scored = 0
         if unscored_opps:
@@ -75,6 +78,12 @@ def trigger_scoring():
             for s in f_scores:
                 insert_score(conn, s)
             scored += len(f_scores)
+
+        if unscored_web:
+            w_scores = score_web_opportunities(config.anthropic_api_key, config.org, unscored_web)
+            for s in w_scores:
+                insert_web_score(conn, s)
+            scored += len(w_scores)
 
         flash(f"Scoring complete: {scored} items scored.", "success")
     except Exception as e:

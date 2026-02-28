@@ -242,7 +242,7 @@ def _migrate_web_opportunity_scores(conn: sqlite3.Connection):
 
 
 def _migrate_scores_uniqueness(conn: sqlite3.Connection):
-    """Deduplicate scores and add unique index on (opportunity_id, foundation_id)."""
+    """Deduplicate scores and add unique indexes."""
     indexes = {row[1] for row in conn.execute("PRAGMA index_list(scores)").fetchall()}
     if "idx_scores_unique_pair" not in indexes:
         # Remove duplicate rows, keeping only the latest scored_at per pair
@@ -260,6 +260,14 @@ def _migrate_scores_uniqueness(conn: sqlite3.Connection):
         )
         conn.commit()
         logger.info("Migrated: deduped scores and added unique index on (opportunity_id, foundation_id)")
+
+    if "idx_scores_web_opp" not in indexes:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_scores_web_opp "
+            "ON scores(web_opportunity_id) WHERE web_opportunity_id IS NOT NULL"
+        )
+        conn.commit()
+        logger.info("Migrated: added unique partial index on scores(web_opportunity_id)")
 
 
 def upsert_opportunity(conn: sqlite3.Connection, opp: dict) -> bool:
@@ -540,6 +548,24 @@ def get_all_foundations(conn: sqlite3.Connection) -> list[dict]:
         FROM foundations f
         LEFT JOIN scores s ON s.foundation_id = f.id
         ORDER BY s.score DESC NULLS LAST, f.total_giving DESC NULLS LAST, f.created_at DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def count_foundations(conn: sqlite3.Connection) -> int:
+    """Return total number of foundations."""
+    return conn.execute("SELECT COUNT(*) FROM foundations").fetchone()[0]
+
+
+def get_foundations_paginated(conn: sqlite3.Connection, limit: int = 50, offset: int = 0) -> list[dict]:
+    """Get paginated foundations with scores, ordered by score then giving."""
+    rows = conn.execute(
+        """SELECT f.*, s.score, s.explanation
+        FROM foundations f
+        LEFT JOIN scores s ON s.foundation_id = f.id
+        ORDER BY s.score DESC NULLS LAST, f.total_giving DESC NULLS LAST, f.created_at DESC
+        LIMIT ? OFFSET ?""",
+        (limit, offset),
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -902,10 +928,64 @@ def get_dashboard_stats(conn: sqlite3.Connection) -> dict:
 def get_all_web_opportunities(conn: sqlite3.Connection) -> list[dict]:
     """Get all web opportunities ordered by discovery date."""
     rows = conn.execute(
-        """SELECT * FROM web_opportunities
-        ORDER BY discovered_at DESC"""
+        """SELECT wo.*, s.score, s.explanation
+        FROM web_opportunities wo
+        LEFT JOIN scores s ON s.web_opportunity_id = wo.id
+        ORDER BY s.score DESC NULLS LAST, wo.discovered_at DESC"""
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def count_web_opportunities(conn: sqlite3.Connection) -> int:
+    """Return total number of web opportunities."""
+    return conn.execute("SELECT COUNT(*) FROM web_opportunities").fetchone()[0]
+
+
+def get_web_opportunities_paginated(conn: sqlite3.Connection, limit: int = 50, offset: int = 0) -> list[dict]:
+    """Get paginated web opportunities with scores."""
+    rows = conn.execute(
+        """SELECT wo.*, s.score, s.explanation
+        FROM web_opportunities wo
+        LEFT JOIN scores s ON s.web_opportunity_id = wo.id
+        ORDER BY s.score DESC NULLS LAST, wo.discovered_at DESC
+        LIMIT ? OFFSET ?""",
+        (limit, offset),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_unscored_web_opportunities(conn: sqlite3.Connection) -> list[dict]:
+    """Get web opportunities that haven't been scored yet."""
+    rows = conn.execute(
+        """SELECT wo.* FROM web_opportunities wo
+        LEFT JOIN scores s ON s.web_opportunity_id = wo.id
+        WHERE s.id IS NULL
+        ORDER BY wo.discovered_at DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def insert_web_score(conn: sqlite3.Connection, score: dict):
+    """Insert or replace a score for a web opportunity."""
+    conn.execute(
+        """INSERT INTO scores
+        (web_opportunity_id, opportunity_id, foundation_id, score, explanation, urgency, model_used)
+        VALUES (?, NULL, NULL, ?, ?, ?, ?)
+        ON CONFLICT(web_opportunity_id) DO UPDATE SET
+            score=excluded.score,
+            explanation=excluded.explanation,
+            urgency=excluded.urgency,
+            model_used=excluded.model_used,
+            scored_at=datetime('now')""",
+        (
+            score["web_opportunity_id"],
+            score["score"],
+            score.get("explanation", ""),
+            score.get("urgency", ""),
+            score.get("model_used", ""),
+        ),
+    )
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 """Opportunities list and detail pages."""
 
+import math
+
 from flask import Blueprint, current_app, render_template, request
 from flask_login import login_required
 
@@ -18,6 +20,8 @@ from grant_intel.db import (
 )
 
 opportunities_bp = Blueprint("opportunities", __name__)
+
+PAGE_SIZE = 50
 
 
 @opportunities_bp.route("/")
@@ -44,7 +48,21 @@ def index():
         if status:
             opps = [o for o in opps if o.get("status") == status]
 
-        return render_template("opportunities.html", opportunities=opps)
+        # Paginate filtered results
+        total = len(opps)
+        page = max(1, request.args.get("page", 1, type=int))
+        total_pages = max(1, math.ceil(total / PAGE_SIZE))
+        page = min(page, total_pages)
+        offset = (page - 1) * PAGE_SIZE
+        opps = opps[offset : offset + PAGE_SIZE]
+
+        return render_template(
+            "opportunities.html",
+            opportunities=opps,
+            page=page,
+            total_pages=total_pages,
+            total=total,
+        )
     finally:
         conn.close()
 

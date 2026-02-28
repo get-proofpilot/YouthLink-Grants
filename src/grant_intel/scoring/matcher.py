@@ -336,3 +336,94 @@ def score_foundations(
                 break
 
     return all_scores
+
+
+WEB_OPP_PROMPT = """Score these web-discovered grant opportunities for {org_name}.
+
+Opportunities:
+{items_json}
+
+Return a JSON array. Each item: {{"id": <id>, "score": <1-10>, "explanation": "<25 words>", "urgency": "<30_day|60_day|90_day|none>"}}
+Respond with ONLY the JSON array."""
+
+
+def score_web_opportunities(
+    api_key: str,
+    org: OrgProfile,
+    web_opps: list[dict],
+    batch_size: int = 5,
+) -> list[dict]:
+    """Score web-discovered opportunities using Claude API."""
+    client = anthropic.Anthropic(api_key=api_key)
+    system_prompt = build_system_prompt(org)
+    all_scores = []
+
+    for i in range(0, len(web_opps), batch_size):
+        batch = web_opps[i : i + batch_size]
+
+        items = [
+            {
+                "id": wo["id"],
+                "title": wo.get("title", ""),
+                "funder": wo.get("funder_name", ""),
+                "description": (wo.get("description") or "")[:400],
+                "deadline": wo.get("deadline", ""),
+                "award_min": wo.get("award_min"),
+                "award_max": wo.get("award_max"),
+                "eligibility": wo.get("eligibility", ""),
+            }
+            for wo in batch
+        ]
+
+        user_prompt = WEB_OPP_PROMPT.format(
+            org_name=org.name,
+            items_json=json.dumps(items, indent=2),
+        )
+
+        messages = [{"role": "user", "content": user_prompt}]
+        for attempt in range(2):
+            try:
+                response = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=messages,
+                )
+
+                response_text = _clean_json_response(response.content[0].text)
+                scores = json.loads(response_text)
+
+                for score_data in scores:
+                    wo_id = score_data.get("id")
+                    matching = next((w for w in batch if w["id"] == wo_id), None)
+                    deadline = matching.get("deadline", "") if matching else ""
+                    all_scores.append({
+                        "web_opportunity_id": wo_id,
+                        "score": min(10, max(1, int(score_data.get("score", 1)))),
+                        "explanation": score_data.get("explanation", ""),
+                        "urgency": score_data.get("urgency", _calculate_urgency(deadline)),
+                        "model_used": "claude-haiku-4-5-20251001",
+                    })
+
+                logger.info("Scored web opp batch %d-%d", i + 1, i + batch_size)
+                break
+            except anthropic.AuthenticationError:
+                logger.error("Invalid API key — aborting web opp scoring")
+                return all_scores
+            except json.JSONDecodeError:
+                if attempt == 0:
+                    logger.warning("JSONDecodeError scoring web opp batch, retrying")
+                    messages = messages + [
+                        {"role": "assistant", "content": response.content[0].text},
+                        {"role": "user", "content": "Your response was not valid JSON. Reply with ONLY a JSON array, no markdown, no explanation."},
+                    ]
+                else:
+                    logger.error(
+                        "JSONDecodeError on retry — skipping web opp batch %d-%d (%d items lost)",
+                        i + 1, i + batch_size, len(batch),
+                    )
+            except anthropic.APIError:
+                logger.exception("APIError scoring web opp batch %d-%d", i + 1, i + batch_size)
+                break
+
+    return all_scores

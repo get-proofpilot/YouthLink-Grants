@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Web Opportunities{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0">Web Opportunities</h4>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-muted">{{ opportunities|length }} results</span>
+    <form method="post" action="{{ url_for('actions.trigger_brave_search') }}" class="d-inline">
+      <button type="submit" class="btn btn-sm btn-outline-info" data-confirm="Run Brave Search? Uses API quota.">
+        <i class="bi bi-globe me-1"></i>Run Brave Search
+      </button>
+    </form>
+  </div>
+</div>
+
+{% if opportunities %}
+<div class="table-responsive">
+  <table class="table table-sm table-dashboard">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Title</th>
+        <th>Funder</th>
+        <th>Deadline</th>
+        <th>Award Range</th>
+        <th>Discovered</th>
+        <th>Link</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for opp in opportunities %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ opp.title|truncate(60) }}</td>
+        <td>{{ opp.funder_name or 'Unknown' }}</td>
+        <td>{{ opp.deadline or 'N/A' }}</td>
+        <td>
+          {% if opp.award_min and opp.award_max %}
+            {{ opp.award_min|currency }} – {{ opp.award_max|currency }}
+          {% elif opp.award_max %}
+            Up to {{ opp.award_max|currency }}
+          {% else %}
+            N/A
+          {% endif %}
+        </td>
+        <td><small class="text-muted">{{ opp.discovered_at[:10] if opp.discovered_at else 'N/A' }}</small></td>
+        <td>
+          {% if opp.url %}
+            <a href="{{ opp.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">No web opportunities found. Click "Run Brave Search" to discover grant opportunities from the web.</div>
+{% endif %}
+{% endblock %}

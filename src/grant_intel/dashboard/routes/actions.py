@@ -149,6 +149,71 @@ def trigger_draft(opp_id):
     return redirect(url_for("opportunities.detail", opp_id=opp_id))
 
 
+@actions_bp.route("/seed", methods=["POST"])
+@login_required
+def trigger_seed():
+    """Seed curated foundations into the database."""
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.sources.curated import seed_curated_foundations
+        new_count = seed_curated_foundations(conn)
+        flash(f"Seeding complete: {new_count} new curated foundations added.", "success")
+    except Exception as e:
+        logger.exception("Seeding failed")
+        flash(f"Seeding failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("main.home"))
+
+
+@actions_bp.route("/enrich", methods=["POST"])
+@login_required
+def trigger_enrich():
+    """Enrich foundations with ProPublica data."""
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.sources.givingtuesday import enrich_all_foundations
+        stats = enrich_all_foundations(conn)
+        flash(
+            f"Enrichment complete: {stats['enriched']} enriched, "
+            f"{stats['skipped']} skipped, {stats['failed']} failed.",
+            "success",
+        )
+    except Exception as e:
+        logger.exception("Enrichment failed")
+        flash(f"Enrichment failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("main.home"))
+
+
+@actions_bp.route("/brave-search", methods=["POST"])
+@login_required
+def trigger_brave_search():
+    """Run Brave Search for web grant opportunities."""
+    config = current_app.config["GRANT_CONFIG"]
+    if not config.brave_api_key:
+        flash("BRAVE_API_KEY not configured.", "danger")
+        return redirect(url_for("main.home"))
+
+    conn = get_connection(current_app.config["DB_PATH"])
+    try:
+        from grant_intel.config import BRAVE_SEARCH_QUERIES
+        from grant_intel.sources.brave_search import discover_web_opportunities
+        stats = discover_web_opportunities(BRAVE_SEARCH_QUERIES, conn, config.brave_api_key)
+        flash(
+            f"Brave Search complete: {stats['queries_run']} queries, "
+            f"{stats['grant_results']} grant-like results, {stats['saved_new']} new saved.",
+            "success",
+        )
+    except Exception as e:
+        logger.exception("Brave Search failed")
+        flash(f"Brave Search failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("web_opportunities.index"))
+
+
 @actions_bp.route("/loi/<int:foundation_id>", methods=["POST"])
 @login_required
 def trigger_loi(foundation_id):

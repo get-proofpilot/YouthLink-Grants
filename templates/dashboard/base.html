@@ -33,6 +33,11 @@
           </a>
         </li>
         <li>
+          <a href="{{ url_for('web_opportunities.index') }}" class="nav-link text-white {% if request.blueprint == 'web_opportunities' %}active bg-white bg-opacity-25{% endif %}">
+            <i class="bi bi-globe me-2"></i>Web Opportunities
+          </a>
+        </li>
+        <li>
           <a href="{{ url_for('drafts.index') }}" class="nav-link text-white {% if request.blueprint == 'drafts' %}active bg-white bg-opacity-25{% endif %}">
             <i class="bi bi-file-earmark-text me-2"></i>Drafts
           </a>

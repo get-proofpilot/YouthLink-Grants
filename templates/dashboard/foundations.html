@@ -16,6 +16,8 @@
         <th data-sort="text" data-col="2" style="cursor:pointer">Name</th>
         <th data-sort="text" data-col="3" style="cursor:pointer">State</th>
         <th data-sort="num" data-col="4" style="cursor:pointer">Total Giving</th>
+        <th data-sort="num" data-col="5" style="cursor:pointer">Assets</th>
+        <th>Enriched</th>
         <th>Focus Areas</th>
       </tr>
     </thead>
@@ -27,6 +29,14 @@
         <td>{{ f.name|truncate(50) }}</td>
         <td>{{ f.state or 'N/A' }}</td>
         <td>{{ f.total_giving|currency }}</td>
+        <td>{{ f.total_assets|currency }}</td>
+        <td>
+          {% if f.last_enriched %}
+            <span class="badge bg-success" title="Enriched {{ f.last_enriched }}">Yes</span>
+          {% else %}
+            <span class="badge bg-secondary">No</span>
+          {% endif %}
+        </td>
         <td class="text-muted small">{{ f.focus_areas|default('N/A', true)|truncate(40) }}</td>
       </tr>
       {% endfor %}

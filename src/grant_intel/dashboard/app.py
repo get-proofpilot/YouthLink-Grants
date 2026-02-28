@@ -65,11 +65,13 @@ def create_app(config_path: str = "config/org_profile.yaml", db_path: str = "dat
     from grant_intel.dashboard.routes.pipeline import pipeline_bp
     from grant_intel.dashboard.routes.actions import actions_bp
     from grant_intel.dashboard.routes.settings import settings_bp
+    from grant_intel.dashboard.routes.web_opportunities import web_opportunities_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(opportunities_bp, url_prefix="/opportunities")
     app.register_blueprint(foundations_bp, url_prefix="/foundations")
+    app.register_blueprint(web_opportunities_bp, url_prefix="/web-opportunities")
     app.register_blueprint(drafts_bp, url_prefix="/drafts")
     app.register_blueprint(pipeline_bp, url_prefix="/pipeline")
     app.register_blueprint(actions_bp, url_prefix="/actions")

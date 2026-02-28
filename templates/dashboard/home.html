@@ -39,6 +39,36 @@
   </div>
 </div>
 
+<!-- Secondary KPI Row -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card stat-card h-100 border-info">
+      <div class="card-body">
+        <div class="stat-number text-info">{{ stats.web_opportunities }}</div>
+        <div class="stat-label">Web Opportunities</div>
+        <small class="text-muted">via Brave Search</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card h-100 border-success">
+      <div class="card-body">
+        <div class="stat-number text-success">{{ stats.enriched_foundations }}</div>
+        <div class="stat-label">Enriched Foundations</div>
+        <small class="text-muted">via ProPublica</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card h-100">
+      <div class="card-body">
+        <div class="stat-number">{{ stats.pipeline_entries }}</div>
+        <div class="stat-label">In Pipeline</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row g-4">
   <!-- Top Opportunities -->
   <div class="col-lg-8">
@@ -157,6 +187,21 @@
         <form method="post" action="{{ url_for('actions.trigger_scoring') }}">
           <button type="submit" class="btn btn-outline-primary w-100" data-confirm="Score all unscored items? This uses the Claude API.">
             <i class="bi bi-star me-1"></i>Score All
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('actions.trigger_seed') }}">
+          <button type="submit" class="btn btn-outline-success w-100" data-confirm="Seed curated foundations into the database?">
+            <i class="bi bi-database-add me-1"></i>Seed Foundations
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('actions.trigger_enrich') }}">
+          <button type="submit" class="btn btn-outline-success w-100" data-confirm="Enrich foundations with ProPublica data? This may take a few minutes.">
+            <i class="bi bi-arrow-repeat me-1"></i>Enrich Foundations
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('actions.trigger_brave_search') }}">
+          <button type="submit" class="btn btn-outline-info w-100" data-confirm="Run Brave Search for web opportunities? Uses API quota.">
+            <i class="bi bi-globe me-1"></i>Brave Search
           </button>
         </form>
       </div>

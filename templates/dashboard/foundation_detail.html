@@ -44,8 +44,38 @@
             <div>{{ foundation.total_assets|currency }}</div>
           </div>
           <div class="col-sm-6">
+            <small class="text-muted">Revenue</small>
+            <div>{{ foundation.revenue|currency }}</div>
+          </div>
+          <div class="col-sm-6">
             <small class="text-muted">NTEE Code</small>
             <div>{{ foundation.ntee_code or 'N/A' }}</div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Accepts Applications</small>
+            <div>
+              {% if foundation.accepts_applications == 1 %}
+                <span class="badge bg-success">Yes</span>
+              {% elif foundation.accepts_applications == 0 %}
+                <span class="badge bg-secondary">No / Invite Only</span>
+              {% else %}
+                <span class="text-muted">Unknown</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Website</small>
+            <div>
+              {% if foundation.website %}
+                <a href="{{ foundation.website }}" target="_blank" rel="noopener">{{ foundation.website|truncate(35) }}</a>
+              {% else %}
+                N/A
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <small class="text-muted">Last Enriched</small>
+            <div>{{ foundation.last_enriched or 'Never' }}</div>
           </div>
           <div class="col-12">
             <small class="text-muted">Focus Areas</small>

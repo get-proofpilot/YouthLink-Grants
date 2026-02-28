@@ -505,7 +505,7 @@ def get_all_opportunities(conn: sqlite3.Connection) -> list[dict]:
 
 
 def get_all_foundations(conn: sqlite3.Connection) -> list[dict]:
-    """Get all foundations with optional scores."""
+    """Get all foundations with optional scores and enrichment fields."""
     rows = conn.execute(
         """SELECT f.*, s.score, s.explanation
         FROM foundations f
@@ -513,6 +513,18 @@ def get_all_foundations(conn: sqlite3.Connection) -> list[dict]:
         ORDER BY s.score DESC NULLS LAST, f.total_giving DESC"""
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_foundation_by_id_full(conn: sqlite3.Connection, foundation_id: int) -> dict | None:
+    """Get a single foundation with score and all enrichment fields."""
+    row = conn.execute(
+        """SELECT f.*, s.score, s.explanation
+        FROM foundations f
+        LEFT JOIN scores s ON s.foundation_id = f.id
+        WHERE f.id = ?""",
+        (foundation_id,),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def get_pipeline_stats(conn: sqlite3.Connection) -> dict:
@@ -845,7 +857,26 @@ def get_dashboard_stats(conn: sqlite3.Connection) -> dict:
     base["deadlines_30"] = upcoming_30
     base["deadlines_60"] = upcoming_60
 
+    # Web opportunities count
+    web_opp_count = conn.execute("SELECT COUNT(*) FROM web_opportunities").fetchone()[0]
+    base["web_opportunities"] = web_opp_count
+
+    # Enriched foundations count
+    enriched_count = conn.execute(
+        "SELECT COUNT(*) FROM foundations WHERE last_enriched IS NOT NULL"
+    ).fetchone()[0]
+    base["enriched_foundations"] = enriched_count
+
     return base
+
+
+def get_all_web_opportunities(conn: sqlite3.Connection) -> list[dict]:
+    """Get all web opportunities ordered by discovery date."""
+    rows = conn.execute(
+        """SELECT * FROM web_opportunities
+        ORDER BY discovered_at DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 # ---------------------------------------------------------------------------

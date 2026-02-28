@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[variables]
+PYTHONPATH = "/app/src"
+
+[start]
+cmd = "mkdir -p data && PYTHONPATH=/app/src gunicorn 'grant_intel.dashboard.app:create_app()' --bind 0.0.0.0:${PORT:-8000} --timeout 300"
